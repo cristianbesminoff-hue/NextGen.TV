@@ -44,7 +44,7 @@
 
     </div>
 
-    <!-- Script de Gestão do Player com ThingProxy -->
+    <!-- Script de Gestão do Player com Proxy Alternativo Atualizado -->
     <script>
         const urlServidor = "http://plus.lat";
         
@@ -56,11 +56,16 @@
         async function fetchIptvApi(action, extraParams = '') {
             let apiOriginal = `${urlServidor}/player_api.php?username=${username}&password=${password}&action=${action}${extraParams}`;
             
-            // Utilizando o ThingProxy, altamente compatível com APIs Xtream
-            const urlSegura = `https://thingproxy.freeboard.io/fetch/${apiOriginal}`;
+            // Utilizando o proxy corsh.io alternativo para evitar quedas de DNS
+            const urlSegura = `https://proxy.cors.sh/${apiOriginal}`;
 
             try {
-                const response = await fetch(urlSegura);
+                const response = await fetch(urlSegura, {
+                    headers: {
+                        'x-requested-with': 'xmlhttprequest'
+                    }
+                });
+                
                 if (!response.ok) throw new Error('Erro na resposta do servidor');
                 
                 const data = await response.json();
