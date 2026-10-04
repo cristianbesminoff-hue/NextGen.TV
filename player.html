@@ -1,150 +1,648 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen TV - Player Web</title>
-    <link rel="icon" href="data:,">
+    <title>NextGen TV - Player</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (!localStorage.getItem('usuario_logado')) {
+            window.location.href = 'cadastro.html';
+        }
+
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0b0f19',
+                        darkCard: '#111827',
+                        accent: '#2563eb',
+                        accentHover: '#1d4ed8'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- HLS.js -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0b0f19; }
+        ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #374151; }
+    </style>
 </head>
-<body class="bg-black text-white min-h-screen flex flex-col p-4 selection:bg-blue-600 selection:text-white">
+<body class="bg-darkBg text-gray-100 font-sans min-h-screen flex flex-col select-none overflow-hidden">
 
-    <div class="max-w-6xl mx-auto w-full space-y-6 flex-1 flex flex-col">
-        
-        <!-- Cabeçalho do Player -->
-        <div class="flex justify-between items-center bg-zinc-950 border border-zinc-800 p-4 rounded-2xl shadow-xl">
-            <div>
-                <h1 class="text-xl font-extrabold text-blue-500">NextGen TV Player</h1>
-                <p id="infoUtilizador" class="text-xs text-zinc-400">A carregar dados da conta...</p>
-            </div>
-            <button onclick="sairPlayer()" class="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-4 py-2 rounded-xl text-xs font-semibold transition">
-                Sair / Trocar Conta
-            </button>
-        </div>
-
-        <!-- Conteúdo Principal / Categorias e Listas -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 flex-1">
-            <!-- Sidebar de Categorias -->
-            <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-2 max-h-[70vh] overflow-y-auto">
-                <h2 class="text-sm font-bold text-zinc-300 uppercase tracking-wider mb-3">Categorias</h2>
-                <div id="listaCategorias" class="space-y-1">
-                    <p class="text-xs text-zinc-500">A carregar categorias...</p>
+    <!-- TELA DE LOGIN / CONEXÃO IPTV -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-darkBg bg-opacity-95 p-4">
+        <div class="bg-darkCard border border-gray-800 rounded-2xl w-full max-w-md p-8 shadow-2xl relative">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent/10 text-accent mb-4 text-2xl">
+                    <i class="fa-solid fa-tv"></i>
                 </div>
+                <h1 class="text-2xl font-bold tracking-wide">NextGen TV Player</h1>
+                <p class="text-sm text-gray-400 mt-1">Conexão Xtream Codes</p>
             </div>
 
-            <!-- Área de Exibição / Streams -->
-            <div class="md:col-span-3 bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col justify-center items-center text-center space-y-4">
-                <div id="playerContainer" class="w-full h-full flex flex-col items-center justify-center space-y-3">
-                    <div class="text-blue-500 text-5xl">📺</div>
-                    <h3 class="text-lg font-bold text-white">Selecione uma categoria e um canal</h3>
-                    <p class="text-sm text-zinc-400 max-w-md">Escolha uma opção na barra lateral para começar a reproduzir o conteúdo na sua tela.</p>
+            <form id="login-form" class="space-y-4" onsubmit="handleLogin(event)">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 uppercase mb-1">Nome da Lista</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fa-solid fa-signature"></i></span>
+                        <input type="text" id="login-name" placeholder="Ex: Minha Lista" value="Minha Lista IPTV" required
+                            class="w-full pl-10 pr-4 py-3 bg-darkBg border border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                    </div>
                 </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 uppercase mb-1">URL do Servidor (ex: http://provider.com:8080)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fa-solid fa-globe"></i></span>
+                        <input type="text" id="login-url" placeholder="http://seu-servidor.com:8080" required
+                            class="w-full pl-10 pr-4 py-3 bg-darkBg border border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 uppercase mb-1">Usuário</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fa-solid fa-user"></i></span>
+                        <input type="text" id="login-user" placeholder="Seu usuário" required
+                            class="w-full pl-10 pr-4 py-3 bg-darkBg border border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 uppercase mb-1">Senha</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password" id="login-pass" placeholder="Sua senha" required
+                            class="w-full pl-10 pr-4 py-3 bg-darkBg border border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                    </div>
+                </div>
+
+                <button type="submit" id="login-btn" class="w-full py-3 bg-accent hover:bg-accentHover text-white font-semibold rounded-xl transition duration-200 shadow-lg shadow-accent/25">
+                    Conectar ao Servidor
+                </button>
+            </form>
+
+            <div class="mt-6 text-center">
+                <button onclick="loadDemoMode()" class="text-xs text-gray-400 hover:text-white underline transition">
+                    Ou clique aqui para testar com streams de demonstração
+                </button>
             </div>
         </div>
-
     </div>
 
-    <!-- Script de Gestão do Player com Proxy Alternativo Atualizado -->
-    <script>
-        const urlServidor = "http://plus.lat";
+    <!-- APLICATIVO PRINCIPAL -->
+    <div id="app-container" class="flex h-screen overflow-hidden hidden">
         
-        const username = localStorage.getItem('iptv_user') || "89912879";
-        const password = localStorage.getItem('iptv_pass') || "472591581";
+        <!-- BARRA LATERAL -->
+        <aside class="w-64 bg-darkCard border-r border-gray-800 flex flex-col justify-between z-20">
+            <div>
+                <div class="p-5 border-b border-gray-800 flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-white font-bold text-lg shadow-md">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
+                    <div class="overflow-hidden">
+                        <h3 id="user-display-name" class="font-bold text-sm truncate">Minha Conta</h3>
+                        <p class="text-xs text-emerald-400 flex items-center gap-1 mt-0.5"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online</p>
+                    </div>
+                </div>
 
-        document.getElementById('infoUtilizador').innerText = `Utilizador: ${username}`;
+                <nav class="p-4 space-y-1.5">
+                    <button onclick="switchTab('live')" id="nav-live" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition bg-accent text-white shadow-md shadow-accent/10">
+                        <i class="fa-solid fa-tv w-5"></i>
+                        <span>Canais ao Vivo</span>
+                    </button>
+                    <button onclick="switchTab('vod')" id="nav-vod" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-gray-800/50 hover:text-white">
+                        <i class="fa-solid fa-film w-5"></i>
+                        <span>Filmes (VOD)</span>
+                    </button>
+                    <button onclick="switchTab('series')" id="nav-series" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-gray-800/50 hover:text-white">
+                        <i class="fa-solid fa-clapperboard w-5"></i>
+                        <span>Séries</span>
+                    </button>
+                    <button onclick="switchTab('favorites')" id="nav-favorites" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-gray-800/50 hover:text-white">
+                        <i class="fa-solid fa-heart w-5 text-red-500"></i>
+                        <span>Favoritos</span>
+                    </button>
+                </nav>
+            </div>
 
-        async function fetchIptvApi(action, extraParams = '') {
-            let apiOriginal = `${urlServidor}/player_api.php?username=${username}&password=${password}&action=${action}${extraParams}`;
-            
-            // Utilizando o proxy corsh.io alternativo para evitar quedas de DNS
-            const urlSegura = `https://proxy.cors.sh/${apiOriginal}`;
+            <div class="p-4 border-t border-gray-800 space-y-2">
+                <button onclick="clearCacheAndReload()" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-xs text-gray-400 hover:bg-gray-800 hover:text-white transition">
+                    <i class="fa-solid fa-rotate w-5"></i>
+                    <span>Atualizar / Limpar Cache</span>
+                </button>
+                <button onclick="logout()" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-xs text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition">
+                    <i class="fa-solid fa-right-from-bracket w-5"></i>
+                    <span>Desconectar Lista</span>
+                </button>
+            </div>
+        </aside>
 
-            try {
-                const response = await fetch(urlSegura, {
-                    headers: {
-                        'x-requested-with': 'xmlhttprequest'
-                    }
-                });
-                
-                if (!response.ok) throw new Error('Erro na resposta do servidor');
-                
-                const data = await response.json();
-                return data;
-            } catch (error) {
-                console.error("Erro ao buscar dados da API:", error);
-                throw error;
+        <!-- CONTEÚDO PRINCIPAL -->
+        <main class="flex-1 flex flex-col bg-darkBg overflow-hidden relative">
+            <header class="h-16 border-b border-gray-800 px-6 flex items-center justify-between bg-darkCard/50 backdrop-blur z-10">
+                <div class="flex items-center space-x-4 flex-1 max-w-md">
+                    <div class="relative w-full">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fa-solid fa-search"></i></span>
+                        <input type="text" id="search-input" oninput="handleSearch()" placeholder="Pesquisar..."
+                            class="w-full pl-10 pr-4 py-2 bg-darkBg border border-gray-800 rounded-xl text-sm focus:outline-none focus:border-accent">
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <div id="connection-status" class="text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        Pronto
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex-1 flex overflow-hidden">
+                <div class="w-72 border-r border-gray-800 bg-darkCard/20 flex flex-col">
+                    <div class="p-4 border-b border-gray-800 text-xs font-bold uppercase tracking-wider text-gray-400">
+                        Categorias
+                    </div>
+                    <div id="categories-container" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+                </div>
+
+                <div class="flex-1 flex flex-col overflow-hidden relative">
+                    <div id="loading-overlay" class="absolute inset-0 bg-darkBg/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center hidden">
+                        <div class="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mb-3"></div>
+                        <p id="loading-text" class="text-sm font-medium text-gray-300">Carregando conteúdo...</p>
+                    </div>
+
+                    <div id="series-view" class="absolute inset-0 bg-darkBg z-30 flex flex-col hidden overflow-y-auto p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <button onclick="closeSeriesView()" class="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-semibold flex items-center gap-2 transition">
+                                <i class="fa-solid fa-arrow-left"></i> Voltar para Séries
+                            </button>
+                        </div>
+                        <div id="series-details-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"></div>
+                        <h3 class="text-lg font-bold mb-4">Temporadas e Episódios</h3>
+                        <div id="seasons-container" class="space-y-6"></div>
+                    </div>
+
+                    <div id="player-view" class="absolute inset-0 bg-black z-30 flex flex-col hidden">
+                        <div class="h-14 bg-darkCard/80 backdrop-blur px-6 flex items-center justify-between border-b border-gray-800">
+                            <div class="flex items-center space-x-3 truncate">
+                                <button onclick="closePlayer()" class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
+                                <h2 id="current-stream-title" class="font-bold text-sm truncate">Reproduzindo</h2>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="toggleFavoriteCurrent()" id="player-fav-btn" class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+                                    <i class="fa-regular fa-heart"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex-1 relative flex items-center justify-center bg-black">
+                            <video id="video-element" class="w-full h-full object-contain" controls autoplay></video>
+                        </div>
+                    </div>
+
+                    <div class="p-6 overflow-y-auto flex-1 flex flex-col" id="grid-scroll-container">
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 id="section-title" class="text-xl font-bold">Canais ao Vivo</h2>
+                            <span id="items-count" class="text-xs text-gray-400 bg-gray-800 px-3 py-1 rounded-full">0 itens</span>
+                        </div>
+
+                        <div id="content-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+
+                        <div id="load-more-container" class="mt-8 text-center hidden">
+                            <button onclick="loadMoreItems()" class="px-6 py-2.5 bg-gray-800 hover:bg-gray-700 text-xs font-semibold rounded-xl transition">
+                                Carregar Mais Itens
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script otimizado para GitHub Pages via corsproxy -->
+    <script>
+        let serverData = { url: '', username: '', password: '', name: '' };
+        let currentTab = 'live'; 
+        let currentCategory = 'all';
+        
+        let cacheData = {
+            live: { categories: [], items: [] },
+            vod: { categories: [], items: [] },
+            series: { categories: [], items: [] }
+        };
+
+        let currentFilteredItems = [];
+        let displayedLimit = 40;
+        let favorites = JSON.parse(localStorage.getItem('iptv_favorites_blue') || '[]');
+        let activeStream = null;
+        let hlsInstance = null;
+
+        window.onload = () => {
+            const saved = localStorage.getItem('iptv_server_blue');
+            if (saved) {
+                serverData = JSON.parse(saved);
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-container').classList.remove('hidden');
+                document.getElementById('user-display-name').innerText = serverData.name;
+                initApp();
             }
+        };
+
+        function handleLogin(e) {
+            e.preventDefault();
+            serverData.name = document.getElementById('login-name').value;
+            serverData.url = document.getElementById('login-url').value.replace(/\/$/, '');
+            serverData.username = document.getElementById('login-user').value;
+            serverData.password = document.getElementById('login-pass').value;
+
+            localStorage.setItem('iptv_server_blue', JSON.stringify(serverData));
+            
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-container').classList.remove('hidden');
+            document.getElementById('user-display-name').innerText = serverData.name;
+            
+            initApp();
+        }
+
+        function loadDemoMode() {
+            serverData = { name: 'Demonstração Pública', url: 'https://test-streams.mux.dev', username: 'demo', password: 'demo' };
+            localStorage.setItem('iptv_server_blue', JSON.stringify(serverData));
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-container').classList.remove('hidden');
+            document.getElementById('user-display-name').innerText = serverData.name;
+            initApp();
+        }
+
+        function logout() {
+            localStorage.removeItem('iptv_server_blue');
+            location.reload();
+        }
+
+        function clearCacheAndReload() {
+            location.reload();
+        }
+
+        function showLoading(text = 'Carregando...') {
+            document.getElementById('loading-text').innerText = text;
+            document.getElementById('loading-overlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.add('hidden');
         }
 
         async function initApp() {
-            try {
-                const categorias = await fetchIptvApi('get_live_categories');
-                const containerCategorias = document.getElementById('listaCategorias');
-                containerCategorias.innerHTML = '';
-
-                if (Array.isArray(categorias)) {
-                    categorias.forEach(cat => {
-                        const btn = document.createElement('button');
-                        btn.className = "w-full text-left px-3 py-2 rounded-xl text-xs text-zinc-300 hover:bg-blue-600 hover:text-white transition font-medium truncate";
-                        btn.innerText = cat.category_name;
-                        btn.onclick = () => carregarCanaisCategoria(cat.category_id, cat.category_name);
-                        containerCategorias.appendChild(btn);
-                    });
-                } else {
-                    containerCategorias.innerHTML = `<p class="text-xs text-red-500">Erro ao carregar categorias.</p>`;
-                }
-            } catch (e) {
-                document.getElementById('listaCategorias').innerHTML = `<p class="text-xs text-red-500">Falha de ligação ao servidor.</p>`;
-            }
+            showLoading("Conectando ao servidor...");
+            await switchTab('live');
+            hideLoading();
         }
 
-        async function carregarCanaisCategoria(categoryId, categoryName) {
-            const container = document.getElementById('playerContainer');
-            container.innerHTML = `<p class="text-sm text-zinc-400">A carregar canais de ${categoryName}...</p>`;
+        async function switchTab(tab) {
+            currentTab = tab;
+            currentCategory = 'all';
+            document.getElementById('search-input').value = '';
+            closeSeriesView();
+            
+            ['live', 'vod', 'series', 'favorites'].forEach(t => {
+                const btn = document.getElementById(`nav-${t}`);
+                if (t === tab) {
+                    btn.className = "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition bg-accent text-white shadow-md shadow-accent/10";
+                } else {
+                    btn.className = "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-gray-800/50 hover:text-white";
+                }
+            });
+
+            const titles = { live: 'Canais ao Vivo', vod: 'Filmes (VOD)', series: 'Séries', favorites: 'Meus Favoritos' };
+            document.getElementById('section-title').innerText = titles[tab];
+
+            if (tab === 'favorites') {
+                renderCategories();
+                processFilterAndRender();
+                return;
+            }
+
+            if (cacheData[tab].items.length > 0) {
+                renderCategories();
+                processFilterAndRender();
+                return;
+            }
+
+            showLoading(`Baixando lista de ${titles[tab]}...`);
+            await fetchTabData(tab);
+            hideLoading();
+
+            renderCategories();
+            processFilterAndRender();
+        }
+
+        // Função robusta focada para GitHub Pages via corsproxy.io
+        async function fetchApiSafe(action, extra = '') {
+            let targetUrl = `${serverData.url}/player_api.php?username=${serverData.username}&password=${serverData.password}&action=${action}${extra}`;
+            let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
             try {
-                const canais = await fetchIptvApi('get_live_streams', `&category_id=${categoryId}`);
-                
-                if (Array.isArray(canais) && canais.length > 0) {
-                    container.innerHTML = `
-                        <h3 class="text-md font-bold text-blue-400">${categoryName} (${canais.length} canais)</h3>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-h-96 overflow-y-auto p-2">
-                            ${canais.map(canal => `
-                                <div onclick="reproduzirCanal('${canal.stream_id}', '${canal.name}')" class="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-blue-500 cursor-pointer transition text-left flex items-center gap-3">
-                                    <span class="text-xl">▶️</span>
-                                    <span class="text-xs font-semibold truncate">${canal.name}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
-                } else {
-                    container.innerHTML = `<p class="text-sm text-zinc-500">Nenhum canal encontrado nesta categoria.</p>`;
+                let res = await fetch(proxyUrl);
+                if (res.ok) {
+                    return await res.json();
                 }
             } catch (err) {
-                container.innerHTML = `<p class="text-sm text-red-500">Erro ao obter os canais.</p>`;
+                console.error("Erro via proxy primário, tentando alternativo:", err);
+                try {
+                    let fallbackUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    let resFallback = await fetch(fallbackUrl);
+                    let data = await resFallback.json();
+                    if (data && data.contents) {
+                        return JSON.parse(data.contents);
+                    }
+                } catch (e2) {
+                    console.error("Falha total na requisição da API", e2);
+                }
+            }
+            return [];
+        }
+
+        async function fetchTabData(tab) {
+            if (serverData.username === 'demo') {
+                cacheData.live = {
+                    categories: [{ category_id: '1', category_name: 'Streams Públicos' }],
+                    items: [
+                        { stream_id: '1', name: 'Big Buck Bunny (HLS)', stream_icon: '', stream_id_val: 'https://test-streams.mux.dev/x364os/playlist.m3u8', category_id: '1' }
+                    ]
+                };
+                return;
+            }
+
+            try {
+                let catAction = tab === 'live' ? 'get_live_categories' : tab === 'vod' ? 'get_vod_categories' : 'get_series_categories';
+                let listAction = tab === 'live' ? 'get_live_streams' : tab === 'vod' ? 'get_vod_streams' : 'get_series';
+
+                const categories = await fetchApiSafe(catAction);
+                const items = await fetchApiSafe(listAction);
+
+                cacheData[tab] = {
+                    categories: Array.isArray(categories) ? categories : [],
+                    items: Array.isArray(items) ? items : []
+                };
+
+                document.getElementById('connection-status').innerText = "Online";
+                document.getElementById('connection-status').className = "text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium";
+            } catch (err) {
+                console.error("Erro ao buscar dados:", err);
+                document.getElementById('connection-status').innerText = "Erro na Conexão";
+                document.getElementById('connection-status').className = "text-xs px-3 py-1.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-medium";
             }
         }
 
-        function reproduzirCanal(streamId, nomeCanal) {
-            const streamUrl = `${urlServidor}/live/${username}/${password}/${streamId}.m3u8`;
-            const container = document.getElementById('playerContainer');
+        function renderCategories() {
+            const container = document.getElementById('categories-container');
+            let cats = currentTab === 'favorites' ? [] : (cacheData[currentTab]?.categories || []);
             
-            container.innerHTML = `
-                <h3 class="text-md font-bold text-white">A reproduzir: ${nomeCanal}</h3>
-                <video controls autoplay class="w-full max-h-80 rounded-xl border border-zinc-800 bg-black shadow-lg">
-                    <source src="${streamUrl}" type="application/x-mpegURL">
-                    O seu navegador não suporta reprodução HLS nativa.
-                </video>
-                <button onclick="initApp()" class="text-xs text-blue-400 underline mt-2">Voltar às categorias</button>
+            let html = `<button onclick="selectCategory('all')" class="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition ${currentCategory === 'all' ? 'bg-accent/10 text-accent font-semibold' : 'text-gray-400 hover:bg-gray-800/40 hover:text-white'}">Todas as Categorias</button>`;
+            
+            cats.forEach(cat => {
+                const id = cat.category_id || cat.id;
+                const name = cat.category_name || cat.name;
+                const active = currentCategory === String(id);
+                html += `<button onclick="selectCategory('${id}')" class="w-full text-left px-3 py-2 rounded-lg text-xs font-medium truncate transition ${active ? 'bg-accent/10 text-accent font-semibold' : 'text-gray-400 hover:bg-gray-800/40 hover:text-white'}">${name}</button>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function selectCategory(catId) {
+            currentCategory = catId;
+            renderCategories();
+            processFilterAndRender();
+        }
+
+        function handleSearch() {
+            processFilterAndRender();
+        }
+
+        function processFilterAndRender() {
+            let baseItems = [];
+            if (currentTab === 'favorites') {
+                const allCombined = [...cacheData.live.items, ...cacheData.vod.items, ...cacheData.series.items];
+                baseItems = allCombined.filter(i => favorites.includes(String(i.stream_id || i.series_id)));
+            } else {
+                baseItems = cacheData[currentTab]?.items || [];
+            }
+
+            if (currentCategory !== 'all' && currentTab !== 'favorites') {
+                baseItems = baseItems.filter(i => String(i.category_id) === String(currentCategory));
+            }
+
+            const query = document.getElementById('search-input').value.toLowerCase();
+            if (query) {
+                baseItems = baseItems.filter(i => (i.name || i.title || '').toLowerCase().includes(query));
+            }
+
+            currentFilteredItems = baseItems;
+            displayedLimit = 40;
+            renderGrid();
+        }
+
+        function renderGrid() {
+            const container = document.getElementById('content-grid');
+            document.getElementById('items-count').innerText = `${currentFilteredItems.length} itens`;
+
+            const sliceItems = currentFilteredItems.slice(0, displayedLimit);
+
+            if (sliceItems.length === 0) {
+                container.innerHTML = `<div class="col-span-full py-12 text-center text-gray-500 text-sm">Nenhum conteúdo encontrado.</div>`;
+                document.getElementById('load-more-container').classList.add('hidden');
+                return;
+            }
+
+            let html = '';
+            sliceItems.forEach(item => {
+                const id = item.stream_id || item.series_id;
+                const name = item.name || item.title;
+                const icon = item.stream_icon || item.cover || 'https://via.placeholder.com/150x200?text=IPTV';
+                const isFav = favorites.includes(String(id));
+
+                let clickAction = '';
+                if (currentTab === 'series' || item.series_id) {
+                    clickAction = `openSeriesInfo('${id}', \`${encodeURIComponent(name)}\`, \`${icon}\`)`;
+                } else {
+                    let playUrl = '';
+                    if (serverData.username === 'demo') {
+                        playUrl = item.stream_id_val;
+                    } else if (currentTab === 'live') {
+                        playUrl = `${serverData.url}/live/${serverData.username}/${serverData.password}/${id}.m3u8`;
+                    } else {
+                        playUrl = `${serverData.url}/movie/${serverData.username}/${serverData.password}/${id}.${item.container_extension || 'mp4'}`;
+                    }
+                    clickAction = `playStream('${id}', \`${encodeURIComponent(name)}\`, \`${playUrl}\`)`;
+                }
+
+                html += `
+                    <div class="bg-darkCard border border-gray-800 rounded-xl overflow-hidden flex flex-col group hover:border-accent transition duration-200 shadow-md cursor-pointer" onclick="${clickAction}">
+                        <div class="aspect-[3/4] bg-gray-900 relative overflow-hidden">
+                            <img src="${icon}" loading="lazy" onerror="this.src='https://via.placeholder.com/150x200?text=IPTV'" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="${name}">
+                            <button onclick="event.stopPropagation(); toggleFavorite('${id}')" class="absolute top-2 right-2 p-2 rounded-lg bg-black/60 backdrop-blur text-white hover:text-accent transition">
+                                <i class="${isFav ? 'fa-solid text-accent' : 'fa-regular'} fa-heart"></i>
+                            </button>
+                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <div class="w-12 h-12 rounded-full bg-accent text-white flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
+                                    <i class="fa-solid fa-play ml-0.5"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-3 flex-1 flex flex-col justify-between">
+                            <h3 class="font-semibold text-xs line-clamp-2 text-gray-200">${name}</h3>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            if (displayedLimit < currentFilteredItems.length) {
+                document.getElementById('load-more-container').classList.remove('hidden');
+            } else {
+                document.getElementById('load-more-container').classList.add('hidden');
+            }
+        }
+
+        function loadMoreItems() {
+            displayedLimit += 40;
+            renderGrid();
+        }
+
+        async function openSeriesInfo(seriesId, encodedName, cover) {
+            const name = decodeURIComponent(encodedName);
+            showLoading("Carregando temporadas...");
+
+            const data = await fetchApiSafe('get_series_info', `&series_id=${seriesId}`);
+            hideLoading();
+
+            document.getElementById('series-view').classList.remove('hidden');
+
+            const info = data.info || {};
+            document.getElementById('series-details-container').innerHTML = `
+                <div class="aspect-[3/4] bg-gray-900 rounded-xl overflow-hidden shadow-lg">
+                    <img src="${cover}" class="w-full h-full object-cover" alt="${name}">
+                </div>
+                <div class="md:col-span-2 space-y-3">
+                    <h2 class="text-2xl font-bold">${name}</h2>
+                    <p class="text-xs text-gray-400">Gênero: ${info.genre || 'N/A'} | Lançamento: ${info.releaseDate || 'N/A'} | Classificação: ${info.rating || 'N/A'}</p>
+                    <p class="text-sm text-gray-300 leading-relaxed">${info.plot || 'Sem sinopse disponível.'}</p>
+                </div>
             `;
+
+            const episodes = data.episodes || {};
+            let seasonsHtml = '';
+
+            Object.keys(episodes).forEach(seasonNum => {
+                const eps = episodes[seasonNum];
+                seasonsHtml += `
+                    <div class="bg-darkCard border border-gray-800 rounded-xl p-4">
+                        <h4 class="font-bold text-sm text-accent mb-3">Temporada ${seasonNum}</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                `;
+
+                eps.forEach(ep => {
+                    const epTitle = ep.title || `Episódio ${ep.episode_num}`;
+                    const epNum = ep.episode_num;
+                    const epId = ep.id;
+                    const containerExt = ep.container_extension || 'mp4';
+                    const playUrl = `${serverData.url}/series/${serverData.username}/${serverData.password}/${epId}.${containerExt}`;
+
+                    seasonsHtml += `
+                        <button onclick="playStream('${epId}', \`${encodeURIComponent(`T${seasonNum} E${epNum} - ${epTitle}`)}\`, \`${playUrl}\`)" class="flex items-center space-x-3 p-3 bg-darkBg hover:bg-accent/10 border border-gray-800 hover:border-accent rounded-xl text-left transition group">
+                            <div class="w-9 h-9 rounded-lg bg-accent/20 group-hover:bg-accent text-accent group-hover:text-white flex items-center justify-center font-bold text-xs transition">
+                                ${epNum}
+                            </div>
+                            <div class="overflow-hidden flex-1">
+                                <p class="font-semibold text-xs text-gray-200 truncate">Ep. ${epNum}</p>
+                                <p class="text-[11px] text-gray-400 truncate">${epTitle}</p>
+                            </div>
+                        </button>
+                    `;
+                });
+
+                seasonsHtml += `</div></div>`;
+            });
+
+            document.getElementById('seasons-container').innerHTML = seasonsHtml || '<p class="text-gray-500 text-sm">Nenhum episódio encontrado.</p>';
         }
 
-        function sairPlayer() {
-            localStorage.clear();
-            window.location.href = 'index.html';
+        function closeSeriesView() {
+            document.getElementById('series-view').classList.add('hidden');
         }
 
-        window.onload = initApp;
+        function toggleFavorite(id) {
+            const strId = String(id);
+            const index = favorites.indexOf(strId);
+            if (index > -1) {
+                favorites.splice(index, 1);
+            } else {
+                favorites.push(strId);
+            }
+            localStorage.setItem('iptv_favorites_blue', JSON.stringify(favorites));
+            renderGrid();
+            if (activeStream && activeStream.id === strId) {
+                updateFavButtonState();
+            }
+        }
+
+        function toggleFavoriteCurrent() {
+            if (activeStream) {
+                toggleFavorite(activeStream.id);
+            }
+        }
+
+        function updateFavButtonState() {
+            if (!activeStream) return;
+            const isFav = favorites.includes(String(activeStream.id));
+            const btn = document.getElementById('player-fav-btn');
+            btn.innerHTML = `<i class="${isFav ? 'fa-solid text-accent' : 'fa-regular'} fa-heart"></i>`;
+        }
+
+        function playStream(id, encodedName, url) {
+            const name = decodeURIComponent(encodedName);
+            activeStream = { id, name, url };
+
+            document.getElementById('current-stream-title').innerText = name;
+            document.getElementById('player-view').classList.remove('hidden');
+            updateFavButtonState();
+
+            const video = document.getElementById('video-element');
+
+            if (Hls.isSupported() && url.includes('.m3u8')) {
+                if (hlsInstance) hlsInstance.destroy();
+                hlsInstance = new Hls();
+                hlsInstance.loadSource(url);
+                hlsInstance.attachMedia(video);
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(e => console.log("Autoplay bloqueado", e));
+                });
+            } else {
+                video.src = url;
+                video.play().catch(e => console.log("Autoplay bloqueado", e));
+            }
+        }
+
+        function closePlayer() {
+            const video = document.getElementById('video-element');
+            video.pause();
+            video.src = '';
+            if (hlsInstance) {
+                hlsInstance.destroy();
+                hlsInstance = null;
+            }
+            activeStream = null;
+            document.getElementById('player-view').classList.add('hidden');
+        }
     </script>
 </body>
 </html>
