@@ -228,7 +228,7 @@
         </main>
     </div>
 
-    <!-- Script com Proxies em Cascata para GitHub Pages / Telemóvel -->
+    <!-- Script Atualizado com Conexão Estável via AllOrigins JSON -->
     <script>
         let serverData = { url: '', username: '', password: '', name: '' };
         let currentTab = 'live'; 
@@ -344,29 +344,35 @@
             processFilterAndRender();
         }
 
-        // Função segura com múltiplos fallbacks de proxies
+        // Função segura com tentativa direta e proxy AllOrigins JSON
         async function fetchApiSafe(action, extra = '') {
             let targetUrl = `${serverData.url}/player_api.php?username=${serverData.username}&password=${serverData.password}&action=${action}${extra}`;
             
-            let proxies = [
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-                `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
-            ];
-
-            for (let proxyUrl of proxies) {
-                try {
-                    let res = await fetch(proxyUrl);
-                    if (res.ok) {
-                        let text = await res.text();
-                        return JSON.parse(text);
-                    }
-                } catch (err) {
-                    console.warn("Tentativa de proxy falhou, tentando próximo...", err);
+            // 1. Tenta chamada direta primeiro
+            try {
+                let res = await fetch(targetUrl);
+                if (res.ok) {
+                    return await res.json();
                 }
+            } catch (e) {
+                // Ignora e avança para o proxy
             }
 
-            console.error("Todos os proxies falharam para a ação:", action);
+            // 2. Tenta através do AllOrigins em formato JSON estruturado
+            let proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+            try {
+                let res = await fetch(proxyUrl);
+                if (res.ok) {
+                    let data = await res.json();
+                    if (data && data.contents) {
+                        return JSON.parse(data.contents);
+                    }
+                }
+            } catch (err) {
+                console.error("Erro ao carregar dados do servidor:", err);
+            }
+
             return [];
         }
 
