@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextGen TV - Painel Master & Disparos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SDKs do Firebase (Modular v10) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrp9JLmd9zBQzByPRBLCStLiLbH5z80Y",
+            authDomain: "nextgentv.firebaseapp.com",
+            projectId: "nextgentv",
+            storageBucket: "nextgentv.firebasestorage.app",
+            messagingSenderId: "999074190973",
+            appId: "1:999074190973:web:967de16614c5274a760314"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let imagemBase64Atual = "";
+
+        async function carregarCadastros() {
+            const tabelaCorpo = document.getElementById('tabelaCorpo');
+            const totalLeads = document.getElementById('totalLeads');
+            tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-zinc-500">A carregar cadastros...</td></tr>`;
+
+            try {
+                const querySnapshot = await getDocs(collection(db, "clientes_leads"));
+                tabelaCorpo.innerHTML = '';
+                let contador = 0;
+
+                querySnapshot.forEach((documento) => {
+                    contador++;
+                    const dados = documento.data();
+                    const idDoc = documento.id;
+
+                    const dataFormatada = dados.dataCadastro ? new Date(dados.dataCadastro).toLocaleString('pt-BR') : 'Data não registrada';
+                    const telLimpo = dados.telefone ? dados.telefone.replace(/\D/g, '') : '';
+
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition";
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-white">${dados.nome || 'N/D'}</td>
+                        <td class="px-6 py-4 text-zinc-300 font-mono text-xs">${dados.email || 'N/D'}</td>
+                        <td class="px-6 py-4 text-zinc-300 font-mono">${dados.telefone || 'N/D'}</td>
+                        <td class="px-6 py-4 text-zinc-500 text-xs">${dataFormatada}</td>
+                        <td class="px-6 py-4 text-right space-x-2">
+                            ${telLimpo ? `
+                            <button onclick="enviarMensagemIndividual('${telLimpo}', '${dados.nome}')" 
+                                class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                                Enviar Zap
+                            </button>` : ''}
+                            <button onclick="excluirCadastro('${idDoc}', '${dados.nome}')" 
+                                class="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                                Excluir
+                            </button>
+                        </td>
+                    `;
+                    tabelaCorpo.appendChild(tr);
+                });
+
+                totalLeads.innerText = `${contador} clientes`;
+
+                if (contador === 0) {
+                    tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-zinc-500">Nenhum cadastro encontrado.</td></tr>`;
+                }
+
+            } catch (error) {
+                console.error("Erro ao carregar dados: ", error);
+                tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-red-500">Erro ao carregar os dados do Firebase.</td></tr>`;
+            }
+        }
+
+        // Carrega a mensagem e imagem atuais do player ao abrir o painel
+        async function carregarMensagemPlayerAtual() {
+            try {
+                const docRef = doc(db, "configuracoes", "aviso_player");
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const dados = docSnap.data();
+                    document.getElementById('mensagemPlayerInput').value = dados.mensagem || '';
+                    document.getElementById('tituloPlayerInput').value = dados.titulo || 'Aviso Importante';
+                    
+                    if (dados.imagem) {
+                        imagemBase64Atual = dados.imagem;
+                        const preview = document.getElementById('previewImagem');
+                        preview.src = dados.imagem;
+                        preview.classList.remove('hidden');
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao buscar mensagem do player:", e);
+            }
+        }
+
+        // Conversor de imagem para Base64 para visualização e envio direto
+        window.processarImagem = (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagemBase64Atual = e.target.result;
+                    const preview = document.getElementById('previewImagem');
+                    preview.src = imagemBase64Atual;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        window.removerImagem = () => {
+            imagemBase64Atual = "";
+            document.getElementById('inputImagem').value = "";
+            const preview = document.getElementById('previewImagem');
+            preview.src = "";
+            preview.classList.add('hidden');
+        };
+
+        // Função para atualizar/enviar a mensagem e a imagem para o player dos usuários
+        window.enviarParaPlayer = async () => {
+            const titulo = document.getElementById('tituloPlayerInput').value.trim();
+            const mensagem = document.getElementById('mensagemPlayerInput').value.trim();
+
+            if (!mensagem) {
+                alert("Escreva uma mensagem antes de enviar para o player!");
+                return;
+            }
+
+            try {
+                await setDoc(doc(db, "configuracoes", "aviso_player"), {
+                    titulo: titulo || "Aviso Importante",
+                    mensagem: mensagem,
+                    imagem: imagemBase64Atual || "",
+                    ativo: true,
+                    atualizadoEm: new Date().toISOString()
+                });
+                alert("Mensagem e imagem enviadas com sucesso para o player de todos os utilizadores!");
+            } catch (error) {
+                console.error("Erro ao salvar mensagem: ", error);
+                alert("Erro ao enviar mensagem.");
+            }
+        };
+
+        window.desativarNoPlayer = async () => {
+            try {
+                await setDoc(doc(db, "configuracoes", "aviso_player"), {
+                    ativo: false
+                }, { merge: true });
+                alert("Mensagem removida do player com sucesso!");
+            } catch (error) {
+                console.error("Erro ao desativar: ", error);
+            }
+        };
+
+        window.enviarMensagemIndividual = (telefone, nomeCliente) => {
+            const textoBase = document.getElementById('mensagemPromocao').value.trim();
+            if (!textoBase) {
+                alert("Por favor, escreva uma mensagem na Central de Promoções antes de enviar!");
+                document.getElementById('mensagemPromocao').focus();
+                return;
+            }
+            const mensagemFinal = `Olá ${nomeCliente}, ${textoBase}`;
+            const urlWpp = `https://api.whatsapp.com/send?phone=55${telefone}&text=${encodeURIComponent(mensagemFinal)}`;
+            window.open(urlWpp, '_blank');
+        };
+
+        window.excluirCadastro = async (idDoc, nomeCliente) => {
+            if (confirm(`Tem certeza que deseja excluir o cadastro de "${nomeCliente}"? O acesso dele será revogado.`)) {
+                try {
+                    await deleteDoc(doc(db, "clientes_leads", idDoc));
+                    alert("Cadastro excluído com sucesso!");
+                    carregarCadastros();
+                } catch (error) {
+                    console.error("Erro ao excluir: ", error);
+                    alert("Não foi possível excluir o cadastro.");
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            carregarCadastros();
+            carregarMensagemPlayerAtual();
+        });
+    </script>
+</head>
+<body class="bg-black text-white min-h-screen p-6">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Cabeçalho -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl shadow-xl">
+            <div>
+                <h1 class="text-2xl font-extrabold text-blue-500">Painel Master - NextGen TV</h1>
+                <p class="text-sm text-zinc-400">Central de disparos e gestão de leads.</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="totalLeads" class="text-xs bg-blue-600/20 text-blue-400 border border-blue-600/30 px-3 py-1.5 rounded-full font-mono">0 clientes</span>
+                <button onclick="location.reload()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
+                    Atualizar Lista
+                </button>
+            </div>
+        </div>
+
+        <!-- Bloco de Mensagem Global para o Player com Imagem -->
+        <div class="bg-zinc-950 border border-blue-600/30 rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    Mensagem Global no Player (Com Imagem)
+                </h2>
+                <span class="text-xs text-blue-400">Aparece assim que o cliente abre o app</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="md:col-span-1">
+                    <label class="text-xs text-zinc-400 mb-1 block">Título do Aviso</label>
+                    <input type="text" id="tituloPlayerInput" placeholder="Ex: Aviso Importante" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
+                </div>
+                <div class="md:col-span-3">
+                    <label class="text-xs text-zinc-400 mb-1 block">Texto da Mensagem</label>
+                    <input type="text" id="mensagemPlayerInput" placeholder="Ex: Servidores em manutenção hoje às 02:00..." 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
+                </div>
+            </div>
+
+            <!-- Secção de Upload de Imagem -->
+            <div class="space-y-2 pt-2 border-t border-zinc-900">
+                <label class="text-xs text-zinc-400 block">Anexar Imagem ao Comunicado (Opcional)</label>
+                <div class="flex items-center gap-4">
+                    <input type="file" id="inputImagem" accept="image/*" onchange="processarImagem(event)"
+                        class="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600/20 file:text-blue-400 hover:file:bg-blue-600/30 cursor-pointer">
+                    <button onclick="removerImagem()" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 px-3 py-2 rounded-xl text-xs transition shrink-0">
+                        Remover Imagem
+                    </button>
+                </div>
+                <!-- Pré-visualização da Imagem -->
+                <div class="mt-2">
+                    <img id="previewImagem" class="hidden max-h-40 rounded-xl border border-zinc-800 object-contain shadow-md" alt="Pré-visualização">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-zinc-900">
+                <button onclick="desativarNoPlayer()" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
+                    Desativar no Player
+                </button>
+                <button onclick="enviarParaPlayer()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-xl text-xs shadow-lg shadow-blue-600/20 transition">
+                    Enviar para o Player
+                </button>
+            </div>
+        </div>
+
+        <!-- Bloco da Central de Mensagem / Promoções (WhatsApp) -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    Central de Mensagens e Promoções (WhatsApp)
+                </h2>
+                <span class="text-xs text-zinc-500">Escreva aqui a mensagem para enviar ao clicar em "Enviar Zap"</span>
+            </div>
+            <div>
+                <textarea id="mensagemPromocao" rows="3" 
+                    placeholder="Digite a mensagem promocional..."
+                    class="w-full bg-black border border-zinc-800 rounded-xl p-4 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition"></textarea>
+            </div>
+        </div>
+
+        <!-- Tabela de Cadastros -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
+            <div class="p-4 border-b border-zinc-900 font-bold text-sm text-zinc-300">
+                Leads Cadastrados (Chave por E-mail)
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-zinc-900/80 text-zinc-400 uppercase text-xs tracking-wider border-b border-zinc-800">
+                        <tr>
+                            <th class="px-6 py-4">Nome</th>
+                            <th class="px-6 py-4">E-mail (Chave)</th>
+                            <th class="px-6 py-4">WhatsApp</th>
+                            <th class="px-6 py-4">Data</th>
+                            <th class="px-6 py-4 text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaCorpo">
+                        <!-- Os dados do Firebase entram aqui -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>
