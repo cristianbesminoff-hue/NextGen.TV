@@ -44,7 +44,7 @@
 
     </div>
 
-    <!-- Script de Gestão do Player com Proxy Estável -->
+    <!-- Script de Gestão do Player Otimizado -->
     <script>
         const urlServidor = "http://plus.lat";
         
@@ -56,8 +56,8 @@
         async function fetchIptvApi(action, extraParams = '') {
             let apiOriginal = `${urlServidor}/player_api.php?username=${username}&password=${password}&action=${action}${extraParams}`;
             
-            // Usando um proxy alternativo altamente compatível com requisições JSON em ambiente estático
-            const urlSegura = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiOriginal)}`;
+            // Usando corsproxy.io codificado de forma limpa
+            const urlSegura = `https://corsproxy.io/?${encodeURIComponent(apiOriginal)}`;
 
             try {
                 const response = await fetch(urlSegura);
