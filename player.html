@@ -228,7 +228,7 @@
         </main>
     </div>
 
-    <!-- Script otimizado para GitHub Pages via corsproxy -->
+    <!-- Script com Proxies em Cascata para GitHub Pages / Telemóvel -->
     <script>
         let serverData = { url: '', username: '', password: '', name: '' };
         let currentTab = 'live'; 
@@ -344,29 +344,29 @@
             processFilterAndRender();
         }
 
-        // Função robusta focada para GitHub Pages via corsproxy.io
+        // Função segura com múltiplos fallbacks de proxies
         async function fetchApiSafe(action, extra = '') {
             let targetUrl = `${serverData.url}/player_api.php?username=${serverData.username}&password=${serverData.password}&action=${action}${extra}`;
-            let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            
+            let proxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+                `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+            ];
 
-            try {
-                let res = await fetch(proxyUrl);
-                if (res.ok) {
-                    return await res.json();
-                }
-            } catch (err) {
-                console.error("Erro via proxy primário, tentando alternativo:", err);
+            for (let proxyUrl of proxies) {
                 try {
-                    let fallbackUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-                    let resFallback = await fetch(fallbackUrl);
-                    let data = await resFallback.json();
-                    if (data && data.contents) {
-                        return JSON.parse(data.contents);
+                    let res = await fetch(proxyUrl);
+                    if (res.ok) {
+                        let text = await res.text();
+                        return JSON.parse(text);
                     }
-                } catch (e2) {
-                    console.error("Falha total na requisição da API", e2);
+                } catch (err) {
+                    console.warn("Tentativa de proxy falhou, tentando próximo...", err);
                 }
             }
+
+            console.error("Todos os proxies falharam para a ação:", action);
             return [];
         }
 
