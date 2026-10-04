@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NextGen TV - Player Web</title>
+    <!-- Evita o erro 404 do favicon -->
+    <link rel="icon" href="data:,">
     <!-- Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -44,7 +46,7 @@
 
     </div>
 
-    <!-- Script de Gestão do Player otimizado para Web/GitHub Pages -->
+    <!-- Script de Gestão do Player com AllOrigins Proxy -->
     <script>
         const urlServidor = "http://plus.lat";
         
@@ -53,29 +55,22 @@
 
         document.getElementById('infoUtilizador').innerText = `Utilizador: ${username}`;
 
-        // Função de fetch adaptada para contornar o bloqueio de CORS em produção no GitHub Pages
         async function fetchIptvApi(action, extraParams = '') {
             let apiOriginal = `${urlServidor}/player_api.php?username=${username}&password=${password}&action=${action}${extraParams}`;
             
-            // Utiliza o proxy corsproxy.io configurado com cabeçalhos abertos para web
-            const urlSegura = `https://corsproxy.io/?${encodeURIComponent(apiOriginal)}`;
+            // Usando AllOrigins, que empacota o JSON de forma compatível com GitHub Pages
+            const urlSegura = `https://api.allorigins.win/get?url=${encodeURIComponent(apiOriginal)}`;
 
             try {
-                const response = await fetch(urlSegura, {
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
+                const response = await fetch(urlSegura);
+                if (!response.ok) throw new Error('Erro na resposta do servidor proxy');
                 
-                if (!response.ok) throw new Error('Erro na resposta do servidor IPTV');
+                const dadosProxy = await response.json();
                 
-                const textoResposta = await response.text();
-                
-                try {
-                    return JSON.parse(textoResposta);
-                } catch (jsonErr) {
-                    console.error("Conteúdo recebido não é JSON válido:", textoResposta);
-                    throw new Error("O servidor retornou uma resposta inválida.");
+                if (dadosProxy && dadosProxy.contents) {
+                    return JSON.parse(dadosProxy.contents);
+                } else {
+                    throw new Error('Resposta vazia do proxy');
                 }
             } catch (error) {
                 console.error("Erro ao buscar dados da API:", error);
