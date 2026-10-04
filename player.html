@@ -228,7 +228,7 @@
         </main>
     </div>
 
-    <!-- Script Atualizado com Conexão Estável via AllOrigins JSON -->
+    <!-- Script com Sistema de Proxies em Cascata Otimizado -->
     <script>
         let serverData = { url: '', username: '', password: '', name: '' };
         let currentTab = 'live'; 
@@ -344,35 +344,31 @@
             processFilterAndRender();
         }
 
-        // Função segura com tentativa direta e proxy AllOrigins JSON
+        // Função segura com múltiplos proxies em cascata especializados para IPTV HTTP
         async function fetchApiSafe(action, extra = '') {
             let targetUrl = `${serverData.url}/player_api.php?username=${serverData.username}&password=${serverData.password}&action=${action}${extra}`;
             
-            // 1. Tenta chamada direta primeiro
-            try {
-                let res = await fetch(targetUrl);
-                if (res.ok) {
-                    return await res.json();
-                }
-            } catch (e) {
-                // Ignora e avança para o proxy
-            }
+            let proxies = [
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+                `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+            ];
 
-            // 2. Tenta através do AllOrigins em formato JSON estruturado
-            let proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-            try {
-                let res = await fetch(proxyUrl);
-                if (res.ok) {
-                    let data = await res.json();
-                    if (data && data.contents) {
-                        return JSON.parse(data.contents);
+            for (let proxyUrl of proxies) {
+                try {
+                    let res = await fetch(proxyUrl);
+                    if (res.ok) {
+                        let text = await res.text();
+                        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+                            return JSON.parse(text);
+                        }
                     }
+                } catch (err) {
+                    console.warn("Proxy falhou, testando próximo...", err);
                 }
-            } catch (err) {
-                console.error("Erro ao carregar dados do servidor:", err);
             }
 
+            console.error("Todos os proxies falharam para a ação:", action);
             return [];
         }
 
