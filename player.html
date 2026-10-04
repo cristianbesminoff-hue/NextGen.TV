@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NextGen TV - Player Web</title>
-    <!-- Evita o erro 404 do favicon -->
     <link rel="icon" href="data:,">
-    <!-- Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-white min-h-screen flex flex-col p-4 selection:bg-blue-600 selection:text-white">
@@ -46,7 +44,7 @@
 
     </div>
 
-    <!-- Script de Gestão do Player com AllOrigins Proxy -->
+    <!-- Script de Gestão do Player com Proxy Estável -->
     <script>
         const urlServidor = "http://plus.lat";
         
@@ -58,20 +56,15 @@
         async function fetchIptvApi(action, extraParams = '') {
             let apiOriginal = `${urlServidor}/player_api.php?username=${username}&password=${password}&action=${action}${extraParams}`;
             
-            // Usando AllOrigins, que empacota o JSON de forma compatível com GitHub Pages
-            const urlSegura = `https://api.allorigins.win/get?url=${encodeURIComponent(apiOriginal)}`;
+            // Usando um proxy alternativo altamente compatível com requisições JSON em ambiente estático
+            const urlSegura = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiOriginal)}`;
 
             try {
                 const response = await fetch(urlSegura);
-                if (!response.ok) throw new Error('Erro na resposta do servidor proxy');
+                if (!response.ok) throw new Error('Erro na resposta do servidor');
                 
-                const dadosProxy = await response.json();
-                
-                if (dadosProxy && dadosProxy.contents) {
-                    return JSON.parse(dadosProxy.contents);
-                } else {
-                    throw new Error('Resposta vazia do proxy');
-                }
+                const data = await response.json();
+                return data;
             } catch (error) {
                 console.error("Erro ao buscar dados da API:", error);
                 throw error;
