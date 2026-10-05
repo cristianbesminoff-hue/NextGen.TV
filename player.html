@@ -1,3 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player Xtream</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mpegts.js/1.7.3/mpegts.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js"></script>
+<style>
+:root{--bg:#0f1220;--panel:#171b2e;--line:#262b45;--tx:#eceaf5;--mut:#8d92b0;--ac:#3dd6c6}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,sans-serif}
+input,select,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+button.p{background:var(--ac);color:#04201d;border:0;font-weight:700;cursor:pointer}
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+#login{height:100%;display:grid;place-items:center;padding:16px}
+.box{width:100%;max-width:360px;display:grid;gap:10px}
+.box h1{margin:0 0 6px;font-size:26px}
+#msg{color:var(--mut);font-size:13px;min-height:18px}#msg.err{color:#ff8a7a}
+#app{display:none;height:100%;grid-template-columns:1fr 370px}
+.main{display:flex;flex-direction:column;min-width:0}
+video{width:100%;background:#000;aspect-ratio:16/9;max-height:72vh}
+.now{padding:10px 14px}.now b{display:block}#st{color:var(--mut);font-size:13px}#st.err{color:#ff8a7a}
+.side{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-radius:0;background:none;padding:12px 4px;color:var(--mut);cursor:pointer}
+.tabs button.on{color:var(--ac);box-shadow:inset 0 -3px var(--ac)}
+.ctl{padding:8px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line)}
+.top button{padding:4px 10px;font-size:12px;cursor:pointer}
+ul{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
+li{display:flex;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+li:hover,li.on{background:#1f2440}li.on{box-shadow:inset 3px 0 var(--ac)}
+li.h{cursor:default;background:var(--bg);color:var(--ac);font-weight:700}
+li img{width:36px;height:36px;object-fit:contain;background:#000;border-radius:4px;flex:none}
+li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.side{border-left:0}video{max-height:38vh}}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="box">
+    <h1>Player Xtream</h1>
+    <input id="host" placeholder="Servidor (ex: http://servidor.com:8080)" value="http://slimpt.site" autocapitalize="off">
+    <input id="user" placeholder="Usuário" autocapitalize="off" autocomplete="username">
+    <input id="pass" type="password" placeholder="Senha" autocomplete="current-password">
+    <button class="p" id="go">Entrar</button>
+    <div id="msg"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="main">
+    <video id="v" controls autoplay playsinline></video>
+    <div class="now"><b id="title">Escolha um canal</b><div id="st"></div></div>
+  </div>
+  <div class="side">
+    <div class="top"><span id="info"></span><button id="out">Sair</button></div>
+    <div class="tabs">
+      <button data-t="live" class="on">Ao vivo</button>
+      <button data-t="vod">Filmes</button>
+      <button data-t="series">Séries</button>
+    </div>
+    <div class="ctl">
+      <select id="cat"></select>
+      <input id="q" type="search" placeholder="Buscar">
+    </div>
+    <ul id="list"></ul>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const T={
+  live:{c:'get_live_categories',i:'get_live_streams',id:'stream_id',ic:'stream_icon'},
+  vod:{c:'get_vod_categories',i:'get_vod_streams',id:'stream_id',ic:'stream_icon'},
+  series:{c:'get_series_categories',i:'get_series',id:'series_id',ic:'cover'}
+};
+let S={},tab='live',cache={},items=[],cats=[],player=null,cur=null,detail=null;
+
+function msg(t,e){$('msg').textContent=t;$('msg').className=e?'err':''}
+function st(t,e){$('st').textContent=t;$('st').className=e?'err':''}
+function enc(x){return encodeURIComponent(x)}
+
+function api(action,extra=''){
+  const u=`${S.host}/player_api.php?username=${enc(S.user)}&password=${enc(S.pass)}${action?'&action='+action:''}${extra}`;
+  return fetch(u).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()});
+}
+
+async function login(){
+  let h=$('host').value.trim().replace(/\/+$/,'');
+  if(!/^https?:\/\//i.test(h))h='http://'+h;
+  S={host:h,user:$('user').value.trim(),pass:$('pass').value};
+  if(!S.user||!S.pass){msg('Preencha usuário e senha.',1);return}
+  msg('Entrando...');
+  try{
+    const d=await api('');
+    if(!d.user_info||String(d.user_info.auth)!=='1')throw new Error('Usuário ou senha inválidos');
+    try{localStorage.setItem('xt',JSON.stringify({host:h,user:S.user}))}catch(e){}
+    const exp=d.user_info.exp_date?new Date(d.user_info.exp_date*1000).toLocaleDateString('pt-BR'):'sem validade';
+    $('info').textContent=`${S.user} · vence ${exp}`;
+    $('login').style.display='none';$('app').style.display='grid';
+    cache={};openTab('live');
+  }catch(e){
+    msg('Falhou: '+e.message+'. Se for "Failed to fetch", o servidor bloqueou o navegador (CORS) ou o endereço/porta está errado.',1);
+  }
+}
+
+async function openTab(t){
+  tab=t;detail=null;
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  $('list').innerHTML='<li class="h">Carregando...</li>';
+  try{
+    if(!cache[t]){const [c,i]=await Promise.all([api(T[t].c),api(T[t].i)]);cache[t]={c,i}}
+    cats=cache[t].c;items=cache[t].i;
+    $('cat').innerHTML='<option value="">Todas as categorias</option>'+cats.map(c=>`<option value="${c.category_id}">${esc(c.category_name)}</option>`).join('');
+    $('q').value='';render();
+  }catch(e){$('list').innerHTML='<li class="h">Erro ao carregar: '+esc(e.message)+'</li>'}
+}
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+
+function row(img,text,fn,on){
+  const li=document.createElement('li');if(on)li.className='on';
+  if(img!==null){const i=document.createElement('img');i.loading='lazy';i.alt='';i.src=img||'';i.onerror=()=>i.style.visibility='hidden';li.append(i)}
+  const s=document.createElement('span');s.textContent=text;li.append(s);li.onclick=fn;return li;
+}
+
+function render(){
+  if(detail)return;
+  const q=$('q').value.toLowerCase(),c=$('cat').value,ul=$('list');
+  const f=items.filter(x=>(!c||String(x.category_id)===c)&&(!q||String(x.name).toLowerCase().includes(q)));
+  ul.innerHTML='';
+  f.slice(0,200).forEach(x=>ul.append(row(x[T[tab].ic],x.name,()=>pick(x),cur===x)));
+  if(f.length>200){const l=document.createElement('li');l.className='h';l.textContent=`Mostrando 200 de ${f.length}. Use a busca.`;ul.append(l)}
+  if(!f.length)ul.innerHTML='<li class="h">Nada encontrado</li>';
+}
+
+function pick(x){
+  if(tab==='series')return openSeries(x);
+  cur=x;render();
+  const live=tab==='live',base=`${S.host}/live/${enc(S.user)}/${enc(S.pass)}/${x.stream_id}`;
+  const url=live?base+(window.mpegts&&mpegts.isSupported()?'.ts':'.m3u8')
+    :`${S.host}/movie/${enc(S.user)}/${enc(S.pass)}/${x.stream_id}.${x.container_extension||'mp4'}`;
+  play(url,x.name,live,live?base+'.m3u8':null);
+}
+
+async function openSeries(s){
+  detail=s;const ul=$('list');ul.innerHTML='<li class="h">Carregando episódios...</li>';
+  try{
+    const d=await api('get_series_info','&series_id='+s.series_id);
+    ul.innerHTML='';
+    ul.append(row(null,'← Voltar às séries',()=>{detail=null;render()}));
+    const eps=d.episodes||{};
+    Object.keys(eps).sort((a,b)=>a-b).forEach(sn=>{
+      const h=document.createElement('li');h.className='h';h.textContent='Temporada '+sn;ul.append(h);
       eps[sn].forEach(e=>ul.append(row(null,`${e.episode_num}. ${e.title||'Episódio'}`,()=>{
         play(`${S.host}/series/${enc(S.user)}/${enc(S.pass)}/${e.id}.${e.container_extension||'mp4'}`,`${s.name} T${sn}E${e.episode_num}`,false);
       })));
