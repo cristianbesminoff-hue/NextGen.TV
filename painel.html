@@ -10,6 +10,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBrp9JLmd9zBQzByPRBLCStLiLbH5z80Y",
@@ -22,58 +23,73 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
 
         let imagemBase64Atual = "";
 
         async function carregarCadastros() {
             const tabelaCorpo = document.getElementById('tabelaCorpo');
             const totalLeads = document.getElementById('totalLeads');
-            tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-zinc-500">A carregar cadastros...</td></tr>`;
+            tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-zinc-500">A carregar cadastros...</td></tr>';
 
             try {
                 const querySnapshot = await getDocs(collection(db, "clientes_leads"));
                 tabelaCorpo.innerHTML = '';
                 let contador = 0;
 
+                const celula = (texto, classe) => {
+                    const td = document.createElement('td');
+                    td.className = classe;
+                    td.textContent = texto;
+                    return td;
+                };
+
                 querySnapshot.forEach((documento) => {
                     contador++;
                     const dados = documento.data();
                     const idDoc = documento.id;
-
                     const dataFormatada = dados.dataCadastro ? new Date(dados.dataCadastro).toLocaleString('pt-BR') : 'Data não registrada';
-                    const telLimpo = dados.telefone ? dados.telefone.replace(/\D/g, '') : '';
+                    const telLimpo = dados.telefone ? String(dados.telefone).replace(/\D/g, '') : '';
 
                     const tr = document.createElement('tr');
                     tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition";
-                    tr.innerHTML = `
-                        <td class="px-6 py-4 font-medium text-white">${dados.nome || 'N/D'}</td>
-                        <td class="px-6 py-4 text-zinc-300 font-mono text-xs">${dados.email || 'N/D'}</td>
-                        <td class="px-6 py-4 text-zinc-300 font-mono">${dados.telefone || 'N/D'}</td>
-                        <td class="px-6 py-4 text-zinc-500 text-xs">${dataFormatada}</td>
-                        <td class="px-6 py-4 text-right space-x-2">
-                            ${telLimpo ? `
-                            <button onclick="enviarMensagemIndividual('${telLimpo}', '${dados.nome}')" 
-                                class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
-                                Enviar Zap
-                            </button>` : ''}
-                            <button onclick="excluirCadastro('${idDoc}', '${dados.nome}')" 
-                                class="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
-                                Excluir
-                            </button>
-                        </td>
-                    `;
+                    tr.append(
+                        celula(dados.nome || 'N/D', 'px-6 py-4 font-medium text-white'),
+                        celula(dados.email || 'N/D', 'px-6 py-4 text-zinc-300 font-mono text-xs'),
+                        celula(dados.telefone || 'N/D', 'px-6 py-4 text-zinc-300 font-mono'),
+                        celula(dataFormatada, 'px-6 py-4 text-zinc-500 text-xs')
+                    );
+
+                    const acoes = document.createElement('td');
+                    acoes.className = 'px-6 py-4 text-right space-x-2';
+
+                    if (telLimpo) {
+                        const bZap = document.createElement('button');
+                        bZap.className = 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bZap.textContent = 'Enviar Zap';
+                        bZap.onclick = () => window.enviarMensagemIndividual(telLimpo, dados.nome || '');
+                        acoes.append(bZap);
+                    }
+
+                    const bDel = document.createElement('button');
+                    bDel.className = 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
+                    bDel.textContent = 'Excluir';
+                    bDel.onclick = () => window.excluirCadastro(idDoc, dados.nome || '');
+                    acoes.append(bDel);
+
+                    tr.append(acoes);
                     tabelaCorpo.appendChild(tr);
                 });
 
                 totalLeads.innerText = `${contador} clientes`;
 
                 if (contador === 0) {
-                    tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-zinc-500">Nenhum cadastro encontrado.</td></tr>`;
+                    tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-zinc-500">Nenhum cadastro encontrado.</td></tr>';
                 }
 
             } catch (error) {
                 console.error("Erro ao carregar dados: ", error);
-                tabelaCorpo.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-red-500">Erro ao carregar os dados do Firebase.</td></tr>`;
+                tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-red-500">Erro ao carregar os dados do Firebase.</td></tr>';
             }
         }
 
@@ -102,16 +118,28 @@
         // Conversor de imagem para Base64 para visualização e envio direto
         window.processarImagem = (event) => {
             const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    imagemBase64Atual = e.target.result;
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    // Reduz para no máximo 800px e comprime (o Firestore aceita só 1 MB por documento)
+                    const esc = Math.min(1, 800 / Math.max(img.width, img.height));
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(img.width * esc);
+                    c.height = Math.round(img.height * esc);
+                    const ctx = c.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, c.width, c.height);
+                    ctx.drawImage(img, 0, 0, c.width, c.height);
+                    imagemBase64Atual = c.toDataURL('image/jpeg', 0.7);
                     const preview = document.getElementById('previewImagem');
                     preview.src = imagemBase64Atual;
                     preview.classList.remove('hidden');
                 };
-                reader.readAsDataURL(file);
-            }
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
         };
 
         window.removerImagem = () => {
@@ -183,15 +211,62 @@
             }
         }
 
+        window.entrar = async () => {
+            const email = document.getElementById('loginEmail').value.trim();
+            const senha = document.getElementById('loginSenha').value;
+            const erro = document.getElementById('loginErro');
+            erro.textContent = '';
+            if (!email || !senha) { erro.textContent = 'Preencha e-mail e senha.'; return; }
+            try {
+                await signInWithEmailAndPassword(auth, email, senha);
+            } catch (e) {
+                console.error(e);
+                erro.textContent = 'E-mail ou senha incorretos.';
+            }
+        };
+
+        window.sair = () => signOut(auth);
+
         window.addEventListener('DOMContentLoaded', () => {
-            carregarCadastros();
-            carregarMensagemPlayerAtual();
+            document.getElementById('loginSenha').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') window.entrar();
+            });
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            const tela = document.getElementById('telaLogin');
+            const painel = document.getElementById('conteudoPainel');
+            if (user) {
+                tela.classList.add('hidden');
+                painel.classList.remove('hidden');
+                carregarCadastros();
+                carregarMensagemPlayerAtual();
+            } else {
+                painel.classList.add('hidden');
+                tela.classList.remove('hidden');
+            }
         });
     </script>
 </head>
 <body class="bg-black text-white min-h-screen p-6">
 
-    <div class="max-w-6xl mx-auto space-y-6">
+    <!-- Tela de login do painel (Firebase Authentication) -->
+    <div id="telaLogin" class="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-2xl p-8 space-y-5">
+            <div class="text-center space-y-1">
+                <h1 class="text-2xl font-extrabold text-blue-500">Painel Master</h1>
+                <p class="text-sm text-zinc-400">Acesso restrito</p>
+            </div>
+            <input type="email" id="loginEmail" placeholder="E-mail" autocomplete="username"
+                class="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
+            <input type="password" id="loginSenha" placeholder="Senha" autocomplete="current-password"
+                class="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
+            <button onclick="entrar()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition">Entrar</button>
+            <p id="loginErro" class="text-xs text-red-400 text-center min-h-[1rem]"></p>
+        </div>
+    </div>
+
+    <div id="conteudoPainel" class="hidden max-w-6xl mx-auto space-y-6">
         
         <!-- Cabeçalho -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl shadow-xl">
@@ -201,6 +276,9 @@
             </div>
             <div class="flex items-center gap-4">
                 <span id="totalLeads" class="text-xs bg-blue-600/20 text-blue-400 border border-blue-600/30 px-3 py-1.5 rounded-full font-mono">0 clientes</span>
+                <button onclick="sair()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
+                    Sair
+                </button>
                 <button onclick="location.reload()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
                     Atualizar Lista
                 </button>
