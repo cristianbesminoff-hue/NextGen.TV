@@ -12,7 +12,7 @@
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyBrp9JlMd9zBUqzByPRBLCStLiLbH5z80Y",
+            apiKey: "AIzaSyBrp9JLmd9zBQzByPRBLCStLiLbH5z80Y",
             authDomain: "nextgentv.firebaseapp.com",
             projectId: "nextgentv",
             storageBucket: "nextgentv.firebasestorage.app",
@@ -20,13 +20,31 @@
             appId: "1:999074190973:web:967de16614c5274a760314"
         };
 
+        // ===== Abre o player: app nativo quando possível, player web nos demais casos =====
+        const URL_DOWNLOAD_APP = "https://cristianbesminoff-hue.github.io/NextGen.TV/"; // página onde o cliente baixa o APK (troque)
+
+        function irParaPlayer() {
+            const ua = navigator.userAgent;
+            if (ua.includes('NextGenApp')) {
+                // Dentro do app: abre o player nativo
+                location.href = 'nextgen://player';
+            } else if (/Android/i.test(ua)) {
+                // Navegador do Android: tenta abrir o app; se não estiver instalado, vai para a página de download
+                location.href = 'intent://player#Intent;scheme=nextgen;package=tv.nextgen.app;S.browser_fallback_url='
+                    + encodeURIComponent(URL_DOWNLOAD_APP) + ';end';
+            } else {
+                // PC e iPhone: continua como antes, no player web
+                window.location.href = 'player.html';
+            }
+        }
+
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
         window.addEventListener('DOMContentLoaded', () => {
             // Se o usuário já tiver cadastro salvo no navegador, manda direto para o player.html sem mostrar o form!
             if (localStorage.getItem('usuario_logado')) {
-                window.location.href = 'player.html';
+                irParaPlayer();
                 return;
             }
 
@@ -78,7 +96,7 @@
                     localStorage.setItem('usuario_logado', JSON.stringify(dadosUsuario));
 
                     // Direciona direto para o player.html
-                    window.location.href = 'player.html';
+                    irParaPlayer();
                 } catch (error) {
                     console.error("Erro ao salvar no Firebase: ", error);
                     alert("Ocorreu um erro ao realizar o cadastro. Tente novamente.");
