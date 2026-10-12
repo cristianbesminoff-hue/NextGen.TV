@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen TV - Painel Master & Disparos</title>
+    <title>NextGen TV - Painel Master & Clientes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- SDKs do Firebase (Modular v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -26,94 +26,452 @@
         const auth = getAuth(app);
 
         let imagemBase64Atual = "";
+        const SERVIDOR_FIXO = "http://plus.lat";
 
-        async function carregarCadastros() {
-            const tabelaCorpo = document.getElementById('tabelaCorpo');
-            const totalLeads = document.getElementById('totalLeads');
-            tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-zinc-500">A carregar cadastros...</td></tr>';
+        // ================= CLIENTES =================
+        async function carregarClientes() {
+            const tabelaClientes = document.getElementById('tabelaClientesCorpo');
+            const totalClientes = document.getElementById('totalClientes');
+            if (tabelaClientes) tabelaClientes.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">A carregar clientes...</td></tr>';
 
             try {
-                const querySnapshot = await getDocs(collection(db, "clientes_leads"));
-                tabelaCorpo.innerHTML = '';
+                const querySnapshot = await getDocs(collection(db, "clientes"));
+                if (tabelaClientes) tabelaClientes.innerHTML = '';
                 let contador = 0;
-
-                const celula = (texto, classe) => {
-                    const td = document.createElement('td');
-                    td.className = classe;
-                    td.textContent = texto;
-                    return td;
-                };
 
                 querySnapshot.forEach((documento) => {
                     contador++;
                     const dados = documento.data();
-                    const idDoc = documento.id;
-                    const dataFormatada = dados.dataCadastro ? new Date(dados.dataCadastro).toLocaleString('pt-BR') : 'Data não registrada';
-                    const telLimpo = dados.telefone ? String(dados.telefone).replace(/\D/g, '') : '';
+                    const whatsappKey = documento.id;
+                    const telLimpo = whatsappKey.replace(/\D/g, '');
 
-                    const tr = document.createElement('tr');
-                    tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition";
-                    tr.append(
-                        celula(dados.nome || 'N/D', 'px-6 py-4 font-medium text-white'),
-                        celula(dados.email || 'N/D', 'px-6 py-4 text-zinc-300 font-mono text-xs'),
-                        celula(dados.telefone || 'N/D', 'px-6 py-4 text-zinc-300 font-mono'),
-                        celula(dataFormatada, 'px-6 py-4 text-zinc-500 text-xs')
-                    );
+                    let statusHtml = "";
+                    let diffDiasGlobal = 999;
 
-                    const acoes = document.createElement('td');
-                    acoes.className = 'px-6 py-4 text-right space-x-2';
+                    if (dados.dataCadastro && dados.diasValidade !== undefined) {
+                        const dataCadastro = new Date(dados.dataCadastro);
+                        const msValidade = dados.diasValidade * 24 * 60 * 60 * 1000;
+                        const dataVencimento = new Date(dataCadastro.getTime() + msValidade);
+                        const agora = new Date();
+                        const diffMs = dataVencimento - agora;
+                        const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+                        diffDiasGlobal = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-                    if (telLimpo) {
-                        const bZap = document.createElement('button');
-                        bZap.className = 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
-                        bZap.textContent = 'Enviar Zap';
-                        bZap.onclick = () => window.enviarMensagemIndividual(telLimpo, dados.nome || '');
-                        acoes.append(bZap);
+                        if (diffMs > 0) {
+                            if (diffDiasGlobal >= 1) {
+                                statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">⏳ ${diffDiasGlobal} dias</span>`;
+                            } else {
+                                statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">⏳ ${diffHoras} horas</span>`;
+                            }
+                        } else {
+                            statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">❌ Expirado</span>`;
+                        }
+                    } else {
+                        statusHtml = `<span class="text-xs text-zinc-500">-</span>`;
                     }
 
-                    const bDel = document.createElement('button');
-                    bDel.className = 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
-                    bDel.textContent = 'Excluir';
-                    bDel.onclick = () => window.excluirCadastro(idDoc, dados.nome || '');
-                    acoes.append(bDel);
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition align-middle";
+                    
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-white">${dados.nome || 'N/D'}</td>
+                        <td class="px-6 py-4 text-zinc-300 font-mono">${whatsappKey}</td>
+                        <td class="px-6 py-4 text-zinc-300 font-mono text-xs">
+                            <span class="text-blue-400">U:</span> ${dados.usuario || '-'}<br>
+                            <span class="text-blue-400">S:</span> ${dados.senha || '-'}
+                        </td>
+                        <td class="px-6 py-4 text-blue-400 font-semibold text-xs">${dados.nomePlano || 'Personalizado'}</td>
+                        <td class="px-6 py-4">${statusHtml}</td>
+                        <td class="px-6 py-4 text-right space-x-1 space-y-1" id="acoes-${telLimpo}"></td>
+                    `;
 
-                    tr.append(acoes);
-                    tabelaCorpo.appendChild(tr);
+                    if (tabelaClientes) tabelaClientes.appendChild(tr);
+
+                    const acoesTd = document.getElementById(`acoes-${telLimpo}`);
+                    if (acoesTd) {
+                        const bZap = document.createElement('button');
+                        bZap.className = 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 px-2 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bZap.textContent = '💬 Wpp';
+                        bZap.title = 'Enviar Cobrança / Acesso no WhatsApp';
+                        bZap.onclick = () => window.enviarMensagemRenovacao(dados.nome || 'Cliente', diffDiasGlobal, telLimpo, dados);
+                        acoesTd.append(bZap);
+
+                        const bInterno = document.createElement('button');
+                        bInterno.className = 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/30 px-2 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bInterno.textContent = '📱 App';
+                        bInterno.title = 'Enviar mensagem direta para o App deste cliente';
+                        bInterno.onclick = () => window.abrirModalMensagemIndividual(whatsappKey, dados.nome || '');
+                        acoesTd.append(bInterno);
+
+                        const bEdit = document.createElement('button');
+                        bEdit.className = 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 px-2 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bEdit.textContent = 'Editar';
+                        bEdit.onclick = () => window.abrirModalEditar(whatsappKey, dados);
+                        acoesTd.append(bEdit);
+
+                        const bDel = document.createElement('button');
+                        bDel.className = 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bDel.textContent = 'Excluir';
+                        bDel.onclick = () => window.excluirCliente(whatsappKey, dados.nome || '');
+                        acoesTd.append(bDel);
+                    }
                 });
 
-                totalLeads.innerText = `${contador} clientes`;
+                if (totalClientes) totalClientes.innerText = `${contador} clientes`;
 
-                if (contador === 0) {
-                    tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-zinc-500">Nenhum cadastro encontrado.</td></tr>';
+                if (contador === 0 && tabelaClientes) {
+                    tabelaClientes.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">Nenhum cliente cadastrado.</td></tr>';
                 }
 
             } catch (error) {
-                console.error("Erro ao carregar dados: ", error);
-                tabelaCorpo.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-red-500">Erro ao carregar os dados do Firebase.</td></tr>';
+                console.error("Erro ao carregar clientes: ", error);
+                if (tabelaClientes) tabelaClientes.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-500">Erro ao carregar os clientes do Firebase.</td></tr>';
             }
         }
 
-        // NOVO: Carregar Pedidos e Orçamentos do Firebase (coleção 'projetos_clientes')
+        window.enviarMensagemRenovacao = (nomeCliente, diasRestantes, telefoneCliente, dados) => {
+            let textoMsg = "";
+            if (diasRestantes <= 5 && diasRestantes > 0) {
+                textoMsg = `Olá ${nomeCliente}, seu plano na *NextGen TV* irá expirar em *${diasRestantes} dia(s)*. Renove agora mesmo para garantir sua continuidade! 📺✨`;
+            } else if (diasRestantes <= 0) {
+                textoMsg = `Olá ${nomeCliente}, seu plano na *NextGen TV* expirou! Renove agora mesmo para continuar aproveitando todos os canais, filmes e séries sem interrupções. 🚀`;
+            } else {
+                textoMsg = `Olá ${nomeCliente}! Seguem seus dados de acesso da *NextGen TV*:\n\n` +
+                    `👤 *Usuário:* ${dados.usuario || '-'}\n` +
+                    `🔑 *Senha:* ${dados.senha || '-'}\n` +
+                    `🌐 *Servidor:* ${SERVIDOR_FIXO}\n\n` +
+                    `Qualquer dúvida estamos à disposição! 🚀`;
+            }
+
+            const urlWpp = `https://api.whatsapp.com/send?phone=55${telefoneCliente}&text=${encodeURIComponent(textoMsg)}`;
+            window.open(urlWpp, '_blank');
+        };
+
+        window.salvarNovoCliente = async () => {
+            const nome = document.getElementById('novoNomeCliente').value.trim();
+            const whatsapp = document.getElementById('novoZapCliente').value.trim().replace(/\D/g, '');
+            const usuario = document.getElementById('novoUsuarioCliente').value.trim();
+            const senha = document.getElementById('novoSenhaCliente').value.trim();
+            const selectPlano = document.getElementById('novoPlanoCliente');
+            const planoValor = selectPlano.value; 
+
+            if (!nome || !whatsapp) {
+                alert("Preencha pelo menos o Nome e o WhatsApp do cliente.");
+                return;
+            }
+
+            const partes = planoValor.split('|');
+            const diasValidade = parseFloat(partes[0]);
+            const nomePlano = partes[1];
+
+            try {
+                await setDoc(doc(db, "clientes", whatsapp), {
+                    nome: nome,
+                    telefone: whatsapp,
+                    usuario: usuario || "",
+                    senha: senha || "",
+                    diasValidade: diasValidade,
+                    nomePlano: nomePlano,
+                    dataCadastro: new Date().toISOString()
+                });
+
+                alert("Cliente cadastrado com sucesso!");
+                document.getElementById('novoNomeCliente').value = '';
+                document.getElementById('novoZapCliente').value = '';
+                document.getElementById('novoUsuarioCliente').value = '';
+                document.getElementById('novoSenhaCliente').value = '';
+                carregarClientes();
+            } catch (error) {
+                console.error("Erro ao salvar cliente:", error);
+                alert("Erro ao cadastrar cliente.");
+            }
+        };
+
+        // ================= SISTEMA DE PROMOÇÕES E SORTEIO =================
+        let listaParticipantesGlobais = [];
+
+        async function carregarDadosPromocao() {
+            try {
+                const docSnap = await getDoc(doc(db, "configuracoes", "promocao_ativa"));
+                if (docSnap.exists()) {
+                    const d = docSnap.data();
+                    document.getElementById('promoTitulo').value = d.titulo || '';
+                    document.getElementById('promoPremio').value = d.premio || '';
+                    document.getElementById('promoDataInicio').value = d.dataInicio || '';
+                    document.getElementById('promoDataFim').value = d.dataFim || '';
+                    document.getElementById('promoAtivaToggle').checked = d.ativa || false;
+                }
+            } catch (e) {
+                console.error("Erro ao carregar promoção:", e);
+            }
+
+            // Escuta participações em tempo real
+            onSnapshot(collection(db, "promocao_participantes"), (snapshot) => {
+                const tabela = document.getElementById('tabelaParticipantesCorpo');
+                const total = document.getElementById('totalParticipantes');
+                tabela.innerHTML = '';
+                listaParticipantesGlobais = [];
+
+                let count = 0;
+                snapshot.forEach((documento) => {
+                    count++;
+                    const part = documento.data();
+                    listaParticipantesGlobais.push(part);
+
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition";
+                    tr.innerHTML = `
+                        <td class="px-6 py-3 font-mono font-bold text-amber-400">#${part.numeroSorte}</td>
+                        <td class="px-6 py-3 font-medium text-white">${part.nome}</td>
+                        <td class="px-6 py-3 text-zinc-400 font-mono">${part.whatsapp}</td>
+                        <td class="px-6 py-3 text-xs text-zinc-500">${part.dataParticipacao ? new Date(part.dataParticipacao).toLocaleString('pt-BR') : '-'}</td>
+                        <td class="px-6 py-3 text-right">
+                            <button onclick="window.excluirParticipante('${documento.id}')" class="text-xs text-red-400 hover:text-red-300">Remover</button>
+                        </td>
+                    `;
+                    tabela.appendChild(tr);
+                });
+
+                if (total) total.innerText = `${count} participantes`;
+                if (count === 0) {
+                    tabela.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-zinc-500">Nenhum participante inscrito ainda.</td></tr>';
+                }
+            });
+        }
+
+        window.salvarPromocao = async () => {
+            const titulo = document.getElementById('promoTitulo').value.trim();
+            const premio = document.getElementById('promoPremio').value.trim();
+            const dataInicio = document.getElementById('promoDataInicio').value;
+            const dataFim = document.getElementById('promoDataFim').value;
+            const ativa = document.getElementById('promoAtivaToggle').checked;
+
+            if (!titulo || !premio) {
+                alert("Preencha pelo menos o Título e a Descrição do Prêmio.");
+                return;
+            }
+
+            try {
+                await setDoc(doc(db, "configuracoes", "promocao_ativa"), {
+                    titulo,
+                    premio,
+                    dataInicio,
+                    dataFim,
+                    ativa,
+                    atualizadoEm: new Date().toISOString()
+                });
+                alert("Configurações de Promoção salvas com sucesso!");
+            } catch (e) {
+                console.error("Erro ao salvar promoção:", e);
+                alert("Erro ao salvar a promoção.");
+            }
+        };
+
+        window.excluirParticipante = async (idDoc) => {
+            if (confirm("Remover este participante do sorteio?")) {
+                await deleteDoc(doc(db, "promocao_participantes", idDoc));
+            }
+        };
+
+        window.limparTodosParticipantes = async () => {
+            if (confirm("ATENÇÃO: Deseja apagar TODOS os participantes do sorteio atual?")) {
+                const snap = await getDocs(collection(db, "promocao_participantes"));
+                snap.forEach(async (d) => {
+                    await deleteDoc(doc(db, "promocao_participantes", d.id));
+                });
+                alert("Lista de participantes zerada!");
+            }
+        };
+
+        window.realizarSorteio = () => {
+            if (listaParticipantesGlobais.length === 0) {
+                alert("Não há participantes inscritos para realizar o sorteio!");
+                return;
+            }
+
+            const boxVencedor = document.getElementById('boxResultadoSorteio');
+            const elNome = document.getElementById('vencedorNome');
+            const elNumero = document.getElementById('vencedorNumero');
+            const elZap = document.getElementById('vencedorZap');
+
+            boxVencedor.classList.remove('hidden');
+            elNome.innerText = "Sorteando...";
+            elNumero.innerText = "🎲 #------";
+
+            let contadorAnimacao = 0;
+            const intervalo = setInterval(() => {
+                const aleatorioTemp = listaParticipantesGlobais[Math.floor(Math.random() * listaParticipantesGlobais.length)];
+                elNumero.innerText = `🎲 #${aleatorioTemp.numeroSorte}`;
+                elNome.innerText = aleatorioTemp.nome;
+                contadorAnimacao++;
+
+                if (contadorAnimacao > 25) {
+                    clearInterval(intervalo);
+                    const ganhador = listaParticipantesGlobais[Math.floor(Math.random() * listaParticipantesGlobais.length)];
+                    elNumero.innerText = `🏆 #${ganhador.numeroSorte}`;
+                    elNome.innerText = ganhador.nome;
+                    elZap.innerText = `WhatsApp: ${ganhador.whatsapp}`;
+                    
+                    const btnZap = document.getElementById('btnNotificarGanhador');
+                    btnZap.onclick = () => {
+                        const msg = `Parabéns ${ganhador.nome}! 🎉 Você foi o grande vencedor da nossa promoção com o número *#${ganhador.numeroSorte}*! Entre em contato para resgatar seu prêmio.`;
+                        window.open(`https://api.whatsapp.com/send?phone=55${ganhador.whatsapp.replace(/\D/g, '')}&text=${encodeURIComponent(msg)}`, '_blank');
+                    };
+                    btnZap.classList.remove('hidden');
+                }
+            }, 100);
+        };
+
+        // ================= MENSAGEM INDIVIDUAL INTERNA =================
+        let clienteZapAtualMsg = "";
+        window.abrirModalMensagemIndividual = (whatsappKey, nomeCliente) => {
+            clienteZapAtualMsg = whatsappKey;
+            document.getElementById('tituloMsgIndividual').innerText = `Enviar Mensagem Interna para: ${nomeCliente}`;
+            document.getElementById('inputTextoIndividual').value = "";
+            document.getElementById('modalMensagemIndividual').classList.remove('hidden');
+        };
+
+        window.fecharModalMensagemIndividual = () => {
+            document.getElementById('modalMensagemIndividual').classList.add('hidden');
+        };
+
+        window.enviarMensagemIndividualApp = async () => {
+            const texto = document.getElementById('inputTextoIndividual').value.trim();
+            if (!texto) {
+                alert("Digite uma mensagem!");
+                return;
+            }
+
+            try {
+                await addDoc(collection(db, "clientes", clienteZapAtualMsg, "mensagens_app"), {
+                    titulo: "Mensagem do Suporte",
+                    mensagem: texto,
+                    data: new Date().toISOString(),
+                    lida: false
+                });
+
+                alert("Mensagem enviada com sucesso para o app do cliente!");
+                fecharModalMensagemIndividual();
+            } catch (e) {
+                console.error("Erro ao enviar mensagem interna:", e);
+                alert("Erro ao enviar mensagem.");
+            }
+        };
+
+        // ================= MENSAGEM GERAL GLOBAL =================
+        window.enviarParaPlayer = async () => {
+            const titulo = document.getElementById('tituloPlayerInput').value.trim();
+            const mensagem = document.getElementById('mensagemPlayerInput').value.trim();
+            if (!mensagem) { alert("Escreva uma mensagem antes de enviar!"); return; }
+            try {
+                await setDoc(doc(db, "configuracoes", "aviso_player"), {
+                    titulo: titulo || "Aviso Importante",
+                    mensagem: mensagem,
+                    imagem: imagemBase64Atual || "",
+                    ativo: true,
+                    atualizadoEm: new Date().toISOString()
+                });
+                alert("Mensagem geral disparada com sucesso para todos os apps!");
+            } catch (error) {
+                console.error("Erro ao salvar:", error);
+            }
+        };
+
+        window.desativarNoPlayer = async () => {
+            try {
+                await setDoc(doc(db, "configuracoes", "aviso_player"), { ativo: false }, { merge: true });
+                alert("Mensagem geral desativada!");
+            } catch (error) { console.error(error); }
+        };
+
+        // ================= EDIÇÃO E EXCLUSÃO =================
+        window.abrirModalEditar = (whatsappKey, dados) => {
+            document.getElementById('editWhatsappOriginal').value = whatsappKey;
+            document.getElementById('editNomeCliente').value = dados.nome || '';
+            document.getElementById('editZapCliente').value = dados.telefone || whatsappKey;
+            document.getElementById('editUsuarioCliente').value = dados.usuario || '';
+            document.getElementById('editSenhaCliente').value = dados.senha || '';
+            document.getElementById('editPlanoCliente').value = dados.diasValidade ? `${dados.diasValidade}|${dados.nomePlano || 'Personalizado'}` : '30|30 Dias (Mensal)';
+            
+            document.getElementById('modalEditarCliente').classList.remove('hidden');
+        };
+
+        window.fecharModalEditar = () => {
+            document.getElementById('modalEditarCliente').classList.add('hidden');
+        };
+
+        window.salvarEdicaoCliente = async () => {
+            const whatsappOriginal = document.getElementById('editWhatsappOriginal').value;
+            const nome = document.getElementById('editNomeCliente').value.trim();
+            const novoZap = document.getElementById('editZapCliente').value.trim().replace(/\D/g, '');
+            const usuario = document.getElementById('editUsuarioCliente').value.trim();
+            const senha = document.getElementById('editSenhaCliente').value.trim();
+            const planoValor = document.getElementById('editPlanoCliente').value;
+
+            if (!nome || !novoZap) {
+                alert("Nome e WhatsApp são obrigatórios.");
+                return;
+            }
+
+            const partes = planoValor.split('|');
+            const diasValidade = parseFloat(partes[0]);
+            const nomePlano = partes[1];
+
+            try {
+                if (whatsappOriginal !== novoZap) {
+                    await setDoc(doc(db, "clientes", novoZap), {
+                        nome: nome,
+                        telefone: novoZap,
+                        usuario: usuario || "",
+                        senha: senha || "",
+                        diasValidade: diasValidade,
+                        nomePlano: nomePlano,
+                        dataCadastro: new Date().toISOString()
+                    });
+                    await deleteDoc(doc(db, "clientes", whatsappOriginal));
+                } else {
+                    await updateDoc(doc(db, "clientes", whatsappOriginal), {
+                        nome: nome,
+                        telefone: novoZap,
+                        usuario: usuario || "",
+                        senha: senha || "",
+                        diasValidade: diasValidade,
+                        nomePlano: nomePlano
+                    });
+                }
+
+                alert("Cliente atualizado com sucesso!");
+                fecharModalEditar();
+                carregarClientes();
+            } catch (error) {
+                console.error("Erro ao atualizar cliente:", error);
+                alert("Erro ao atualizar os dados do cliente.");
+            }
+        };
+
+        window.excluirCliente = async (whatsappKey, nomeCliente) => {
+            if (confirm(`Deseja excluir o cliente "${nomeCliente}" (WhatsApp: ${whatsappKey})?`)) {
+                try {
+                    await deleteDoc(doc(db, "clientes", whatsappKey));
+                    alert("Cliente excluído com sucesso!");
+                    carregarClientes();
+                } catch (error) {
+                    console.error("Erro ao excluir:", error);
+                    alert("Não foi possível excluir o cliente.");
+                }
+            }
+        };
+
+        // ================= PEDIDOS E ORÇAMENTOS =================
         async function carregarPedidosOrcamentos() {
             const tabelaPedidos = document.getElementById('tabelaPedidosCorpo');
             const totalPedidos = document.getElementById('totalPedidos');
-            tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">A carregar pedidos...</td></tr>';
+            if (tabelaPedidos) tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">A carregar pedidos...</td></tr>';
 
             try {
                 const querySnapshot = await getDocs(collection(db, "projetos_clientes"));
-                tabelaPedidos.innerHTML = '';
+                if (tabelaPedidos) tabelaPedidos.innerHTML = '';
                 let contador = 0;
-
-                const celula = (conteudo, classe) => {
-                    const td = document.createElement('td');
-                    td.className = classe;
-                    if (typeof conteudo === 'string') {
-                        td.textContent = conteudo;
-                    } else {
-                        td.appendChild(conteudo);
-                    }
-                    return td;
-                };
 
                 querySnapshot.forEach((documento) => {
                     contador++;
@@ -121,87 +479,59 @@
                     const idDoc = documento.id;
                     const dataCriacao = dados.criadoEm && dados.criadoEm.toDate ? dados.criadoEm.toDate().toLocaleString('pt-BR') : 'Recente';
 
+                    let coresHtml = "Padrão";
+                    if (dados.cores) {
+                        coresHtml = Object.entries(dados.cores).map(([k, v]) => 
+                            `<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 text-zinc-300 flex items-center gap-1 inline-flex"><span class="w-2 h-2 rounded-full inline-block" style="background:${v}"></span>${v}</span>`
+                        ).join(' ');
+                    }
+
+                    let imgHtml = "Sem imagem";
+                    if (dados.playerImage) {
+                        imgHtml = `<img src="${dados.playerImage}" class="w-20 h-12 object-cover rounded border border-zinc-800 cursor-pointer hover:scale-150 transition origin-left" onclick="const w = window.open(''); w.document.write('<img src=\\'${dados.playerImage}\\' style=\\'max-width:100%; background:#000;\\'>');">`;
+                    }
+
                     const tr = document.createElement('tr');
                     tr.className = "border-b border-zinc-900 hover:bg-zinc-900/55 transition align-middle";
+                    tr.innerHTML = `
+                        <td class="px-6 py-4"><span class="font-bold text-white">${dados.appName || 'Sem Nome'}</span><br><span class="text-xs text-zinc-400">${dados.appContact || ''}</span></td>
+                        <td class="px-6 py-4"><div class="flex flex-wrap gap-1 items-center text-xs font-mono">${coresHtml}</div></td>
+                        <td class="px-6 py-4"><span class="text-blue-400 font-semibold">${dados.planoSelecionado || 'Plano'}</span><br><span class="text-xs text-emerald-400 font-bold">${dados.resumoTotal || ''}</span></td>
+                        <td class="px-6 py-4">${imgHtml}</td>
+                        <td class="px-6 py-4 text-zinc-500 text-xs">${dataCriacao}</td>
+                        <td class="px-6 py-4 text-right" id="pedido-acoes-${idDoc}"></td>
+                    `;
 
-                    // Nome do App e Contato
-                    const infoApp = document.createElement('div');
-                    infoApp.innerHTML = `<span class="font-bold text-white">${dados.appName || 'Sem Nome'}</span><br><span class="text-xs text-zinc-400">${dados.appContact || ''}</span>`;
+                    if (tabelaPedidos) tabelaPedidos.appendChild(tr);
 
-                    // Cores Exatas com badge visual e código numérico/hex
-                    const divCores = document.createElement('div');
-                    divCores.className = "flex flex-wrap gap-1 items-center text-xs font-mono";
-                    if (dados.cores) {
-                        for (const [k, v] of Object.entries(dados.cores)) {
-                            const badge = document.createElement('span');
-                            badge.className = "px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 text-zinc-300 flex items-center gap-1";
-                            badge.innerHTML = `<span class="w-2 h-2 rounded-full inline-block" style="background:${v}"></span>${v}`;
-                            divCores.appendChild(badge);
-                        }
-                    } else {
-                        divCores.textContent = 'Padrão';
-                    }
-
-                    // Plano e Resumo
-                    const infoPlano = document.createElement('div');
-                    infoPlano.innerHTML = `<span class="text-blue-400 font-semibold">${dados.planoSelecionado || 'Plano'}</span><br><span class="text-xs text-emerald-400 font-bold">${dados.resumoTotal || ''}</span>`;
-
-                    // Miniatura da Imagem do Player
-                    const tdImg = document.createElement('div');
-                    if (dados.playerImage) {
-                        const img = document.createElement('img');
-                        img.src = dados.playerImage;
-                        img.className = "w-20 h-12 object-cover rounded border border-zinc-800 cursor-pointer hover:scale-150 transition origin-left";
-                        img.title = "Clique para ampliar";
-                        img.onclick = () => {
-                            const w = window.open("");
-                            w.document.write(`<img src="${dados.playerImage}" style="max-width:100%; background:#000;">`);
+                    const acoesTd = document.getElementById(`pedido-acoes-${idDoc}`);
+                    if (acoesTd) {
+                        const bDel = document.createElement('button');
+                        bDel.className = 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
+                        bDel.textContent = 'Excluir';
+                        bDel.onclick = async () => {
+                            if (confirm(`Deseja apagar este pedido de "${dados.appName}"?`)) {
+                                await deleteDoc(doc(db, "projetos_clientes", idDoc));
+                                alert('Pedido removido com sucesso!');
+                                carregarPedidosOrcamentos();
+                            }
                         };
-                        tdImg.appendChild(img);
-                    } else {
-                        tdImg.textContent = 'Sem imagem';
+                        acoesTd.append(bDel);
                     }
-
-                    tr.append(
-                        celula(infoApp, 'px-6 py-4'),
-                        celula(divCores, 'px-6 py-4'),
-                        celula(infoPlano, 'px-6 py-4'),
-                        celula(tdImg, 'px-6 py-4'),
-                        celula(dataCriacao, 'px-6 py-4 text-zinc-500 text-xs')
-                    );
-
-                    // Botão de excluir pedido
-                    const acoes = document.createElement('td');
-                    acoes.className = 'px-6 py-4 text-right';
-                    const bDel = document.createElement('button');
-                    bDel.className = 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition';
-                    bDel.textContent = 'Excluir';
-                    bDel.onclick = async () => {
-                        if (confirm(`Deseja apagar este pedido de "${dados.appName}"?`)) {
-                            await deleteDoc(doc(db, "projetos_clientes", idDoc));
-                            alert('Pedido removido com sucesso!');
-                            carregarPedidosOrcamentos();
-                        }
-                    };
-                    acoes.append(bDel);
-                    tr.append(acoes);
-
-                    tabelaPedidos.appendChild(tr);
                 });
 
-                totalPedidos.innerText = `${contador} pedidos`;
+                if (totalPedidos) totalPedidos.innerText = `${contador} pedidos`;
 
-                if (contador === 0) {
-                    tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">Nenhum pedido ou orçamento recebido ainda.</td></tr>';
+                if (contador === 0 && tabelaPedidos) {
+                    tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-zinc-500">Nenhum pedido recebido.</td></tr>';
                 }
 
             } catch (error) {
                 console.error("Erro ao carregar projetos:", error);
-                tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-500">Erro ao carregar pedidos do Firebase.</td></tr>';
+                if (tabelaPedidos) tabelaPedidos.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-500">Erro ao carregar pedidos.</td></tr>';
             }
         }
 
-        // Carrega a mensagem e imagem atuais do player ao abrir o painel
         async function carregarMensagemPlayerAtual() {
             try {
                 const docRef = doc(db, "configuracoes", "aviso_player");
@@ -210,7 +540,6 @@
                     const dados = docSnap.data();
                     document.getElementById('mensagemPlayerInput').value = dados.mensagem || '';
                     document.getElementById('tituloPlayerInput').value = dados.titulo || 'Aviso Importante';
-                    
                     if (dados.imagem) {
                         imagemBase64Atual = dados.imagem;
                         const preview = document.getElementById('previewImagem');
@@ -219,11 +548,10 @@
                     }
                 }
             } catch (e) {
-                console.error("Erro ao buscar mensagem do player:", e);
+                console.error("Erro ao buscar mensagem:", e);
             }
         }
 
-        // Conversor de imagem para Base64 para visualização e envio direto
         window.processarImagem = (event) => {
             const file = event.target.files[0];
             if (!file) return;
@@ -257,66 +585,6 @@
             preview.classList.add('hidden');
         };
 
-        window.enviarParaPlayer = async () => {
-            const titulo = document.getElementById('tituloPlayerInput').value.trim();
-            const mensagem = document.getElementById('mensagemPlayerInput').value.trim();
-
-            if (!mensagem) {
-                alert("Escreva uma mensagem antes de enviar para o player!");
-                return;
-            }
-
-            try {
-                await setDoc(doc(db, "configuracoes", "aviso_player"), {
-                    titulo: titulo || "Aviso Importante",
-                    mensagem: mensagem,
-                    imagem: imagemBase64Atual || "",
-                    ativo: true,
-                    atualizadoEm: new Date().toISOString()
-                });
-                alert("Mensagem e imagem enviadas com sucesso para o player de todos os utilizadores!");
-            } catch (error) {
-                console.error("Erro ao salvar mensagem: ", error);
-                alert("Erro ao enviar mensagem.");
-            }
-        };
-
-        window.desativarNoPlayer = async () => {
-            try {
-                await setDoc(doc(db, "configuracoes", "aviso_player"), {
-                    ativo: false
-                }, { merge: true });
-                alert("Mensagem removida do player com sucesso!");
-            } catch (error) {
-                console.error("Erro ao desativar: ", error);
-            }
-        };
-
-        window.enviarMensagemIndividual = (telefone, nomeCliente) => {
-            const textoBase = document.getElementById('mensagemPromocao').value.trim();
-            if (!textoBase) {
-                alert("Por favor, escreva uma mensagem na Central de Promoções antes de enviar!");
-                document.getElementById('mensagemPromocao').focus();
-                return;
-            }
-            const mensagemFinal = `Olá ${nomeCliente}, ${textoBase}`;
-            const urlWpp = `https://api.whatsapp.com/send?phone=55${telefone}&text=${encodeURIComponent(mensagemFinal)}`;
-            window.open(urlWpp, '_blank');
-        };
-
-        window.excluirCadastro = async (idDoc, nomeCliente) => {
-            if (confirm(`Tem certeza que deseja excluir o cadastro de "${nomeCliente}"? O acesso dele será revogado.`)) {
-                try {
-                    await deleteDoc(doc(db, "clientes_leads", idDoc));
-                    alert("Cadastro excluído com sucesso!");
-                    carregarCadastros();
-                } catch (error) {
-                    console.error("Erro ao excluir: ", error);
-                    alert("Não foi possível excluir o cadastro.");
-                }
-            }
-        }
-
         window.entrar = async () => {
             const email = document.getElementById('loginEmail').value.trim();
             const senha = document.getElementById('loginSenha').value;
@@ -326,18 +594,11 @@
             try {
                 await signInWithEmailAndPassword(auth, email, senha);
             } catch (e) {
-                console.error(e);
                 erro.textContent = 'E-mail ou senha incorretos.';
             }
         };
 
         window.sair = () => signOut(auth);
-
-        window.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('loginSenha').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') window.entrar();
-            });
-        });
 
         onAuthStateChanged(auth, (user) => {
             const tela = document.getElementById('telaLogin');
@@ -345,9 +606,10 @@
             if (user) {
                 tela.classList.add('hidden');
                 painel.classList.remove('hidden');
-                carregarCadastros();
-                carregarPedidosOrcamentos(); // Carrega também os pedidos do Firebase
+                carregarClientes();
+                carregarPedidosOrcamentos();
                 carregarMensagemPlayerAtual();
+                carregarDadosPromocao();
             } else {
                 painel.classList.add('hidden');
                 tela.classList.remove('hidden');
@@ -357,7 +619,7 @@
 </head>
 <body class="bg-black text-white min-h-screen p-6">
 
-    <!-- Tela de login do painel (Firebase Authentication) -->
+    <!-- Tela de Login -->
     <div id="telaLogin" class="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
         <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-2xl p-8 space-y-5">
             <div class="text-center space-y-1">
@@ -373,51 +635,208 @@
         </div>
     </div>
 
+    <!-- Conteúdo Principal do Painel -->
     <div id="conteudoPainel" class="hidden max-w-6xl mx-auto space-y-6">
         
         <!-- Cabeçalho -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl shadow-xl">
             <div>
                 <h1 class="text-2xl font-extrabold text-blue-500">Painel Master - NextGen TV</h1>
-                <p class="text-sm text-zinc-400">Central de disparos e gestão de leads.</p>
+                <p class="text-sm text-zinc-400">Gestão de Clientes, Vencimentos, Promoções e Acessos</p>
             </div>
-            <div class="flex items-center gap-4">
-                <span id="totalLeads" class="text-xs bg-blue-600/20 text-blue-400 border border-blue-600/30 px-3 py-1.5 rounded-full font-mono">0 clientes</span>
+            <div class="flex items-center gap-3 flex-wrap">
+                <a href="https://painelplus.site/#/dashboar" target="_blank" rel="noopener" class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/30 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                    🌐 Ir para o Painel
+                </a>
+                <button onclick="location.reload()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
+                    Atualizar Painel
+                </button>
                 <button onclick="sair()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
                     Sair
-                </button>
-                <button onclick="location.reload()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
-                    Atualizar Lista
                 </button>
             </div>
         </div>
 
-        <!-- Bloco de Mensagem Global para o Player com Imagem -->
+        <!-- NOVO: SISTEMA DE PROMOÇÕES E SORTEIOS -->
+        <div class="bg-zinc-950 border border-amber-500/30 rounded-2xl p-6 shadow-xl space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    🎁 Gerenciador de Promoções & Sorteios
+                </h2>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-zinc-400">Ativar Promoção no App Cliente:</label>
+                    <input type="checkbox" id="promoAtivaToggle" class="w-5 h-5 accent-amber-500 cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Configurações do Evento -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-black/40 p-4 rounded-xl border border-zinc-900">
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Título do Evento</label>
+                    <input type="text" id="promoTitulo" placeholder="Ex: Promoção de Mês das Mães" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Prêmio</label>
+                    <input type="text" id="promoPremio" placeholder="Ex: Concorra a 30 dias de conteúdo grátis" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Data Início</label>
+                    <input type="date" id="promoDataInicio" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Data Fim</label>
+                    <input type="date" id="promoDataFim" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500 transition">
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center">
+                <button onclick="salvarPromocao()" class="bg-amber-600 hover:bg-amber-500 text-black font-extrabold px-6 py-2.5 rounded-xl text-xs transition shadow-lg shadow-amber-600/20">
+                    💾 Salvar e Atualizar Promoção
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="limparTodosParticipantes()" class="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 px-4 py-2.5 rounded-xl text-xs font-semibold transition">
+                        🗑️ Limpar Participantes
+                    </button>
+                    <button onclick="realizarSorteio()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-6 py-2.5 rounded-xl text-xs transition shadow-lg shadow-emerald-600/20">
+                        🎲 Realizar Sorteio Agora!
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULTADO DO SORTEIO -->
+            <div id="boxResultadoSorteio" class="hidden bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-500/20 border border-amber-500/40 rounded-2xl p-6 text-center space-y-3">
+                <span class="text-xs font-bold text-amber-400 uppercase tracking-widest">🎉 Vencedor Sorteado 🎉</span>
+                <h3 id="vencedorNome" class="text-2xl font-black text-white">---</h3>
+                <p id="vencedorNumero" class="text-3xl font-black text-amber-400 font-mono">#------</p>
+                <p id="vencedorZap" class="text-sm text-zinc-300 font-mono"></p>
+                <button id="btnNotificarGanhador" class="hidden bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-lg transition inline-flex items-center gap-2">
+                    💬 Avisar Ganhador no WhatsApp
+                </button>
+            </div>
+
+            <!-- TABELA DE PARTICIPANTES DA PROMOÇÃO -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-zinc-300">Inscritos no Sorteio</h3>
+                    <span id="totalParticipantes" class="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full font-mono">0 participantes</span>
+                </div>
+
+                <div class="overflow-x-auto border border-zinc-900 rounded-xl">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-zinc-900/80 text-zinc-400 uppercase text-xs tracking-wider border-b border-zinc-800">
+                            <tr>
+                                <th class="px-6 py-3">Número da Sorte</th>
+                                <th class="px-6 py-3">Nome</th>
+                                <th class="px-6 py-3">WhatsApp</th>
+                                <th class="px-6 py-3">Data de Inscrição</th>
+                                <th class="px-6 py-3 text-right">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaParticipantesCorpo">
+                            <!-- Participantes do Firebase -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gestão e Cadastro de Clientes -->
+        <div class="bg-zinc-950 border border-emerald-600/30 rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    Cadastro de Clientes, Credenciais e Prazos
+                </h2>
+                <span id="totalClientes" class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-3 py-1 rounded-full font-mono">0 clientes</span>
+            </div>
+
+            <!-- Formulário Novo Cliente -->
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bg-black/40 p-4 rounded-xl border border-zinc-900 items-end">
+                <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Nome</label>
+                    <input type="text" id="novoNomeCliente" placeholder="Nome do Cliente" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition">
+                </div>
+                <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">WhatsApp</label>
+                    <input type="text" id="novoZapCliente" placeholder="51999999999" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition">
+                </div>
+                <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Usuário</label>
+                    <input type="text" id="novoUsuarioCliente" placeholder="Usuário IPTV" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition font-mono">
+                </div>
+                <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Senha</label>
+                    <input type="text" id="novoSenhaCliente" placeholder="Senha IPTV" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition font-mono">
+                </div>
+                <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Plano</label>
+                    <select id="novoPlanoCliente" class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                        <option value="0.5|Teste 12h">⚡ Teste 12h</option>
+                        <option value="30|30 Dias (Mensal)" selected>📅 30 Dias (Mensal)</option>
+                        <option value="90|90 Dias (Trimestral)">🗓️ 90 Dias (Trimestral)</option>
+                        <option value="365|365 Dias (Anual)">⭐ Anual (365 Dias)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button onclick="salvarNovoCliente()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl text-xs shadow-lg transition">
+                    + Cadastrar Novo Cliente
+                </button>
+            </div>
+
+            <!-- Tabela de Clientes -->
+            <div class="overflow-x-auto border border-zinc-900 rounded-xl">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-zinc-900/80 text-zinc-400 uppercase text-xs tracking-wider border-b border-zinc-800">
+                        <tr>
+                            <th class="px-6 py-4">Nome</th>
+                            <th class="px-6 py-4">WhatsApp</th>
+                            <th class="px-6 py-4">Credenciais</th>
+                            <th class="px-6 py-4">Plano</th>
+                            <th class="px-6 py-4">Tempo Restante</th>
+                            <th class="px-6 py-4 text-right">Ações (Wpp / App / Outros)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaClientesCorpo">
+                        <!-- Clientes entram aqui -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Bloco de Mensagem Geral para o App (Broadcast) -->
         <div class="bg-zinc-950 border border-blue-600/30 rounded-2xl p-6 shadow-xl space-y-4">
             <div class="flex items-center justify-between">
                 <h2 class="text-lg font-bold text-white flex items-center gap-2">
                     <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
-                    Mensagem Global no Player (Com Imagem)
+                    Mensagem Geral para Todos os Apps (Broadcast)
                 </h2>
-                <span class="text-xs text-blue-400">Aparece assim que o cliente abre o app</span>
+                <span class="text-xs text-blue-400">Envia para o painel de avisos de todos os clientes</span>
             </div>
-            
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="md:col-span-1">
-                    <label class="text-xs text-zinc-400 mb-1 block">Título do Aviso</label>
-                    <input type="text" id="tituloPlayerInput" placeholder="Ex: Aviso Importante" 
+                    <label class="text-xs text-zinc-400 mb-1 block">Título</label>
+                    <input type="text" id="tituloPlayerInput" placeholder="Ex: Aviso Geral" 
                         class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
                 </div>
                 <div class="md:col-span-3">
-                    <label class="text-xs text-zinc-400 mb-1 block">Texto da Mensagem</label>
-                    <input type="text" id="mensagemPlayerInput" placeholder="Ex: Servidores em manutenção hoje às 02:00..." 
+                    <label class="text-xs text-zinc-400 mb-1 block">Mensagem Geral</label>
+                    <input type="text" id="mensagemPlayerInput" placeholder="Ex: Novos filmes disponíveis..." 
                         class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition">
                 </div>
             </div>
-
-            <!-- Secção de Upload de Imagem -->
             <div class="space-y-2 pt-2 border-t border-zinc-900">
-                <label class="text-xs text-zinc-400 block">Anexar Imagem ao Comunicado (Opcional)</label>
+                <label class="text-xs text-zinc-400 block">Anexar Imagem (Opcional)</label>
                 <div class="flex items-center gap-4">
                     <input type="file" id="inputImagem" accept="image/*" onchange="processarImagem(event)"
                         class="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600/20 file:text-blue-400 hover:file:bg-blue-600/30 cursor-pointer">
@@ -425,23 +844,21 @@
                         Remover Imagem
                     </button>
                 </div>
-                <!-- Pré-visualização da Imagem -->
                 <div class="mt-2">
                     <img id="previewImagem" class="hidden max-h-40 rounded-xl border border-zinc-800 object-contain shadow-md" alt="Pré-visualização">
                 </div>
             </div>
-
             <div class="flex justify-end gap-3 pt-4 border-t border-zinc-900">
                 <button onclick="desativarNoPlayer()" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
-                    Desativar no Player
+                    Desativar Mensagem Geral
                 </button>
-                <button onclick="enviarParaPlayer()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-xl text-xs shadow-lg shadow-blue-600/20 transition">
-                    Enviar para o Player
+                <button onclick="enviarParaPlayer()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-xl text-xs shadow-lg transition">
+                    🚀 Enviar Mensagem Geral para Todos
                 </button>
             </div>
         </div>
 
-        <!-- NOVO SETOR: Pedidos e Orçamentos Recebidos (Consulta da coleção 'projetos_clientes') -->
+        <!-- Pedidos e Orçamentos Recebidos -->
         <div class="bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
             <div class="p-4 border-b border-zinc-900 flex justify-between items-center">
                 <span class="font-bold text-sm text-zinc-300 flex items-center gap-2">
@@ -455,7 +872,7 @@
                     <thead class="bg-zinc-900/80 text-zinc-400 uppercase text-xs tracking-wider border-b border-zinc-800">
                         <tr>
                             <th class="px-6 py-4">App / Rodapé</th>
-                            <th class="px-6 py-4">Códigos Hexadecimais</th>
+                            <th class="px-6 py-4">Cores Hexadecimais</th>
                             <th class="px-6 py-4">Plano & Valores</th>
                             <th class="px-6 py-4">Preview Player</th>
                             <th class="px-6 py-4">Data</th>
@@ -463,51 +880,83 @@
                         </tr>
                     </thead>
                     <tbody id="tabelaPedidosCorpo">
-                        <!-- Os dados do Firebase de projetos_clientes entram aqui -->
+                        <!-- Pedidos do Firebase -->
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Bloco da Central de Mensagem / Promoções (WhatsApp) -->
-        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div class="flex items-center justify-between">
-                <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                    Central de Mensagens e Promoções (WhatsApp)
-                </h2>
-                <span class="text-xs text-zinc-500">Escreva aqui a mensagem para enviar ao clicar em "Enviar Zap"</span>
-            </div>
+    </div>
+
+    <!-- MODAL MENSAGEM INDIVIDUAL -->
+    <div id="modalMensagemIndividual" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <h3 id="tituloMsgIndividual" class="text-lg font-bold text-white">Enviar Mensagem Interna</h3>
+            <p class="text-xs text-zinc-400">Esta mensagem aparecerá diretamente no aplicativo deste cliente.</p>
+            
             <div>
-                <textarea id="mensagemPromocao" rows="3" 
-                    placeholder="Digite a mensagem promocional..."
-                    class="w-full bg-black border border-zinc-800 rounded-xl p-4 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition"></textarea>
+                <textarea id="inputTextoIndividual" rows="4" placeholder="Digite a mensagem para o app do cliente..." 
+                    class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition"></textarea>
+            </div>
+
+            <div class="flex flex-col gap-2 pt-2">
+                <button onclick="enviarMensagemIndividualApp()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg shadow-blue-600/20">
+                    📱 Enviar para o App
+                </button>
+                <button onclick="fecharModalMensagemIndividual()" class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 py-2 rounded-xl text-xs transition">
+                    Cancelar
+                </button>
             </div>
         </div>
+    </div>
 
-        <!-- Tabela de Cadastros -->
-        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-            <div class="p-4 border-b border-zinc-900 font-bold text-sm text-zinc-300">
-                Leads Cadastrados (Chave por E-mail)
+    <!-- MODAL EDITAR CLIENTE -->
+    <div id="modalEditarCliente" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <h3 class="text-lg font-bold text-white">Editar Dados do Cliente</h3>
+            <input type="hidden" id="editWhatsappOriginal">
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Nome</label>
+                    <input type="text" id="editNomeCliente" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">WhatsApp</label>
+                    <input type="text" id="editZapCliente" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Usuário</label>
+                    <input type="text" id="editUsuarioCliente" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Senha</label>
+                    <input type="text" id="editSenhaCliente" 
+                        class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1">Plano</label>
+                    <select id="editPlanoCliente" class="w-full bg-black border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                        <option value="0.5|Teste 12h">⚡ Teste 12h</option>
+                        <option value="30|30 Dias (Mensal)">📅 30 Dias (Mensal)</option>
+                        <option value="90|90 Dias (Trimestral)">🗓️ 90 Dias (Trimestral)</option>
+                        <option value="365|365 Dias (Anual)">⭐ Anual (365 Dias)</option>
+                    </select>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-zinc-900/80 text-zinc-400 uppercase text-xs tracking-wider border-b border-zinc-800">
-                        <tr>
-                            <th class="px-6 py-4">Nome</th>
-                            <th class="px-6 py-4">E-mail (Chave)</th>
-                            <th class="px-6 py-4">WhatsApp</th>
-                            <th class="px-6 py-4">Data</th>
-                            <th class="px-6 py-4 text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabelaCorpo">
-                        <!-- Os dados do Firebase entram aqui -->
-                    </tbody>
-                </table>
+
+            <div class="flex flex-col gap-2 pt-3">
+                <button onclick="salvarEdicaoCliente()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg shadow-blue-600/20">
+                    💾 Salvar Alterações
+                </button>
+                <button onclick="fecharModalEditar()" class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 py-2 rounded-xl text-xs transition">
+                    Cancelar
+                </button>
             </div>
         </div>
-
     </div>
 
 </body>
